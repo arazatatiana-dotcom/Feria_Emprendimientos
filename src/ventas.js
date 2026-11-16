@@ -10,7 +10,7 @@
  */
 const DB = require('./db');
 const mailer = require('./mailer');
-const { cents, money, fail, verify, addHours, addMinutes, esc, fmt } = require('./util');
+const { cents, money, fail, verify, hash, randomCodigo, addHours, addMinutes, esc, fmt } = require('./util');
 
 const FORMAS = ['saldo', 'efectivo', 'transferencia'];
 
@@ -20,20 +20,63 @@ async function getConfig(q = DB.get()) {
   return cfg;
 }
 
-// ---------- Control de intentos de PIN (bloqueo 10 min tras 5 fallos) ----------
+// ---------- Autorización del comprador: PIN (4 dígitos) o código de pago (6 dígitos) ----------
+// El código lo genera el comprador en su celular, sirve una sola vez y vence en minutos:
+// aunque alguien lo vea o lo escuche, después ya no sirve. El PIN se puede desactivar en Ajustes.
+// Ambos comparten el bloqueo: 5 intentos fallidos bloquean 10 minutos.
 const pinFails = new Map();
 async function checkPin(comprador, pin) {
   const st = pinFails.get(comprador.id);
-  if (st && st.until > Date.now()) fail('PIN bloqueado por intentos fallidos. Espere 10 minutos o use la aprobación desde la app del comprador.', 429);
-  if (!comprador.pin_hash) fail('El comprador no tiene PIN asignado. Use la aprobación desde su app.');
-  if (!verify(String(pin).trim(), comprador.pin_hash)) {
+  if (st && st.until > Date.now()) fail('Bloqueado por intentos fallidos. Espere 10 minutos o pida al comprador que apruebe la compra en su app.', 429);
+  const val = String(pin ?? '').trim();
+  let ok = null;
+  if (/^\d{6}$/.test(val)) {
+    const rows = await DB.get().query(`SELECT id, codigo_hash FROM codigos_pago WHERE usuario_id = @u AND usado_en IS NULL AND expira > @now`,
+      { u: comprador.id, now: new Date() });
+    const c = rows.find(r => verify(val, r.codigo_hash));
+    if (c) ok = { medio: 'codigo', codigoId: c.id };
+  } else if (/^\d{4}$/.test(val)) {
+    const cfg = await getConfig();
+    if (cfg.pago_con_pin === '0') fail('El pago con PIN está desactivado. Pide al comprador el código de pago de su celular o que apruebe la compra en su app.');
+    if (!comprador.pin_hash) fail('El comprador no tiene PIN asignado. Use el código de pago o la aprobación desde su app.');
+    if (verify(val, comprador.pin_hash)) ok = { medio: 'pin' };
+  } else {
+    fail('Ingrese el PIN de 4 dígitos o el código de pago de 6 dígitos');
+  }
+  if (!ok) {
     // Si hubo un bloqueo y ya venció, el contador vuelve a empezar; si no, se acumula
     const n = (st && st.until && st.until <= Date.now() ? 0 : (st?.n || 0)) + 1;
     pinFails.set(comprador.id, { n, until: n >= 5 ? Date.now() + 10 * 60e3 : 0 });
     if (n === 5) await avisarPinBloqueado(comprador.id);
-    fail(n >= 5 ? 'PIN incorrecto. Se bloqueó por 10 minutos.' : `PIN incorrecto (intento ${n} de 5)`);
+    const que = val.length === 6 ? 'Código incorrecto, vencido o ya usado' : 'PIN incorrecto';
+    fail(n >= 5 ? `${que}. Se bloqueó por 10 minutos.` : `${que} (intento ${n} de 5)`);
   }
   pinFails.delete(comprador.id);
+  return ok;
+}
+
+// Marca el código como usado dentro de la transacción de la venta: si la venta falla, el código sigue vigente
+async function consumirCodigo(q, autz) {
+  if (!autz || !autz.codigoId) return;
+  const r = await q.run('UPDATE codigos_pago SET usado_en = @now WHERE id = @id AND usado_en IS NULL', { id: autz.codigoId, now: new Date() });
+  if (!r.changes) fail('Ese código de pago ya se usó. Pide al comprador que genere uno nuevo.');
+}
+
+const ultimoCodigo = new Map();
+async function generarCodigoPago(usuarioId) {
+  const t = ultimoCodigo.get(usuarioId);
+  if (t && Date.now() - t < 5000) fail('Espera unos segundos antes de generar otro código', 429);
+  ultimoCodigo.set(usuarioId, Date.now());
+  const cfg = await getConfig();
+  const codigo = randomCodigo();
+  const now = new Date();
+  const expira = addMinutes(now, Math.min(30, Math.max(1, Number(cfg.minutos_codigo_pago) || 5)));
+  await DB.get().tx(async (q) => {
+    // Solo un código vigente por comprador: los anteriores dejan de servir
+    await q.run('UPDATE codigos_pago SET usado_en = @now WHERE usuario_id = @u AND usado_en IS NULL', { u: usuarioId, now });
+    await q.insert('codigos_pago', { usuario_id: usuarioId, codigo_hash: hash(codigo), expira, creado: now });
+  });
+  return { codigo, expira: expira.toISOString() };
 }
 
 // Avisa al comprador: si no fue él quien intentó, alguien está probando su PIN
@@ -165,30 +208,49 @@ async function crear(user, input) {
   const db = DB.get();
   const cfg = await getConfig();
   const emp = await getEmprendimiento(db, user.id);
+  // Clave de idempotencia: si el Wi-Fi se corta y el vendedor reintenta, se devuelve la misma venta
+  // en lugar de registrarla (y cobrarla) dos veces.
+  const idem = typeof input.idem === 'string' && /^[\w-]{8,64}$/.test(input.idem) ? input.idem : null;
+  const yaRegistrada = async () => {
+    if (!idem) return null;
+    const ex = await db.get('SELECT id FROM ventas WHERE vendedor_id = @u AND idem = @k', { u: user.id, k: idem });
+    return ex ? loadVenta(db, ex.id) : null;
+  };
+  const previa = await yaRegistrada();
+  if (previa) return previa;
+
   const comprador = await db.get('SELECT id, pin_hash, activo FROM usuarios WHERE id = @id', { id: Number(input.comprador_id) });
   if (!comprador || !comprador.activo) fail('Comprador no encontrado');
   if (comprador.id === user.id) fail('No puede registrarse una venta a sí mismo');
   const usaSaldo = (input.pagos || []).some(p => p.forma === 'saldo' && cents(p.monto) > 0);
-  let porPin = false;
-  if (usaSaldo && input.pin) { await checkPin(comprador, input.pin); porPin = true; }
+  const autz = usaSaldo && input.pin ? await checkPin(comprador, input.pin) : null;
 
-  const id = await db.tx(async (q) => {
-    const { lines, pagos, totalC, saldoC } = await buildVenta(q, emp.id, input);
-    await applyEffects(q, comprador.id, lines, saldoC);
-    const now = new Date();
-    const estado = saldoC > 0 && !porPin ? 'por_confirmar' : 'confirmada';
-    const ventaId = await q.insert('ventas', {
-      emprendimiento_id: emp.id, comprador_id: comprador.id, vendedor_id: user.id,
-      total: money(totalC), total_saldo: money(saldoC), estado,
-      confirmada_por: saldoC > 0 ? (porPin ? 'pin' : null) : 'no_requiere',
-      expira_confirmacion: estado === 'por_confirmar' ? addMinutes(now, Number(cfg.minutos_confirmacion)) : null,
-      ...limiteEntrega(cfg, now, lines, saldoC),
-      creado: now, actualizado: now,
+  let id;
+  try {
+    id = await db.tx(async (q) => {
+      const { lines, pagos, totalC, saldoC } = await buildVenta(q, emp.id, input);
+      await applyEffects(q, comprador.id, lines, saldoC);
+      if (saldoC > 0) await consumirCodigo(q, autz);
+      const now = new Date();
+      const estado = saldoC > 0 && !autz ? 'por_confirmar' : 'confirmada';
+      const ventaId = await q.insert('ventas', {
+        emprendimiento_id: emp.id, comprador_id: comprador.id, vendedor_id: user.id,
+        total: money(totalC), total_saldo: money(saldoC), estado,
+        confirmada_por: saldoC > 0 ? (autz ? autz.medio : null) : 'no_requiere',
+        expira_confirmacion: estado === 'por_confirmar' ? addMinutes(now, Number(cfg.minutos_confirmacion)) : null,
+        ...limiteEntrega(cfg, now, lines, saldoC),
+        creado: now, actualizado: now, idem,
+      });
+      await writeLines(q, ventaId, lines, pagos);
+      await historial(q, ventaId, user.id, 'creada', { estado, medio: autz ? autz.medio : null, ...resumenLineas(lines, pagos) });
+      return ventaId;
     });
-    await writeLines(q, ventaId, lines, pagos);
-    await historial(q, ventaId, user.id, 'creada', { estado, ...resumenLineas(lines, pagos) });
-    return ventaId;
-  });
+  } catch (e) {
+    // Dos reintentos simultáneos: el índice único deja pasar solo uno; el otro devuelve esa venta
+    const otra = await yaRegistrada();
+    if (otra) return otra;
+    throw e;
+  }
   const v = await loadVenta(db, id);
   if (v.estado === 'confirmada') await notificarConfirmada(v);
   return v;
@@ -204,8 +266,7 @@ async function editar(user, id, input) {
   if (actual.estado === 'anulada') fail('Una venta anulada no se puede modificar');
   const comprador = await db.get('SELECT id, pin_hash FROM usuarios WHERE id = @id', { id: actual.comprador_id });
   const nuevoSaldo = cents((input.pagos || []).filter(p => p.forma === 'saldo').reduce((a, p) => a + Number(p.monto || 0), 0));
-  let porPin = false;
-  if (nuevoSaldo > 0 && input.pin) { await checkPin(comprador, input.pin); porPin = true; }
+  const autz = nuevoSaldo > 0 && input.pin ? await checkPin(comprador, input.pin) : null;
 
   await db.tx(async (q) => {
     await lockVenta(q, id);
@@ -218,7 +279,7 @@ async function editar(user, id, input) {
     const now = new Date();
     let estado = v.estado, confirmada_por = v.confirmada_por, expira = v.expira_confirmacion ? new Date(v.expira_confirmacion) : null;
     if (saldoC === 0) { estado = 'confirmada'; confirmada_por = 'no_requiere'; expira = null; }
-    else if (porPin) { estado = 'confirmada'; confirmada_por = 'pin'; expira = null; }
+    else if (autz) { await consumirCodigo(q, autz); estado = 'confirmada'; confirmada_por = autz.medio; expira = null; }
     else if (saldoC > cents(v.total_saldo) || v.estado === 'por_confirmar') {
       estado = 'por_confirmar'; confirmada_por = null; expira = addMinutes(now, Number(cfg.minutos_confirmacion));
     }
@@ -249,12 +310,13 @@ async function editar(user, id, input) {
 // ---------- Anular ----------
 // `condicion(v)`: solo para anulaciones automáticas; se evalúa con la venta ya bloqueada,
 // para no anular una venta que cambió (se confirmó, se entregó o se editó) desde que se consultó.
-async function anular(actor, id, motivo, { sistema = false, condicion = null } = {}) {
+// `forzar`: lo usa un administrador al resolver el reporte de un comprador.
+async function anular(actor, id, motivo, { sistema = false, condicion = null, forzar = false } = {}) {
   const db = DB.get();
   if (!sistema) {
     if (!motivo || String(motivo).trim().length < 3) fail('Indique el motivo de la anulación');
   }
-  const permitido = (v) => sistema || actor.rol === 'superadmin' || v.emprendedor_usuario_id === actor.id
+  const permitido = (v) => sistema || forzar || actor.rol === 'superadmin' || v.emprendedor_usuario_id === actor.id
     || (v.comprador_id === actor.id && v.estado === 'por_confirmar');
   const v0 = await loadVenta(db, id);
   if (!v0) fail('Venta no encontrada', 404);
@@ -291,14 +353,19 @@ async function confirmar(actor, id, { pin } = {}) {
   const esVendedor = v0.emprendedor_usuario_id === actor.id;
   if (!esComprador && !esVendedor) fail('No autorizado', 403);
   if (v0.estado !== 'por_confirmar') fail(v0.estado === 'anulada' ? 'Esta venta fue anulada' : 'Esta venta ya está confirmada');
+  let autz = null;
   if (esVendedor && !esComprador) {
     const comprador = await db.get('SELECT id, pin_hash FROM usuarios WHERE id = @id', { id: v0.comprador_id });
-    await checkPin(comprador, pin);
+    autz = await checkPin(comprador, pin);
   }
+  const medio = esComprador ? 'app' : autz.medio;
   const ok = await db.tx(async (q) => {
     const r = await q.run(`UPDATE ventas SET estado='confirmada', confirmada_por=@cp, expira_confirmacion=NULL, actualizado=@now
-      WHERE id=@id AND estado='por_confirmar'`, { id, cp: esComprador ? 'app' : 'pin', now: new Date() });
-    if (r.changes) await historial(q, id, actor.id, 'confirmada', { medio: esComprador ? 'app' : 'pin' });
+      WHERE id=@id AND estado='por_confirmar'`, { id, cp: medio, now: new Date() });
+    if (r.changes) {
+      await consumirCodigo(q, autz);
+      await historial(q, id, actor.id, 'confirmada', { medio });
+    }
     return r.changes > 0;
   });
   if (!ok) fail('La venta ya no está pendiente');
@@ -324,6 +391,52 @@ async function marcarEntregado(user, id) {
   return nv;
 }
 
+// ---------- Reporte del comprador: "no reconozco esta compra" ----------
+// No anula sola (un comprador podría reportar algo que sí recibió): queda pendiente para que un
+// administrador revise con el emprendedor y decida anularla o descartar el reporte.
+const adminEmails = async (db) => (await db.query(`SELECT email FROM usuarios WHERE rol IN ('admin','superadmin') AND activo=1 AND email IS NOT NULL`)).map(a => a.email);
+
+async function reportar(actor, id, motivo) {
+  const db = DB.get();
+  const v = await loadVenta(db, id);
+  if (!v || v.comprador_id !== actor.id) fail('Venta no encontrada', 404);
+  if (v.estado !== 'confirmada' || cents(v.total_saldo) <= 0) fail('Solo se pueden reportar compras confirmadas pagadas con saldo');
+  if (v.reporte_estado) fail('Esta compra ya fue reportada');
+  const m = String(motivo || '').trim();
+  if (m.length < 5) fail('Cuéntanos brevemente qué pasó');
+  const now = new Date();
+  const hecho = await db.tx(async (q) => {
+    const r = await q.run(`UPDATE ventas SET reporte=@m, reporte_estado='pendiente', reportada_en=@now, actualizado=@now
+      WHERE id=@id AND reporte_estado IS NULL`, { id, m: m.slice(0, 300), now });
+    if (r.changes) await historial(q, id, actor.id, 'reportada', { motivo: m });
+    return r.changes > 0;
+  });
+  if (!hecho) fail('Esta compra ya fue reportada');
+  const nv = await loadVenta(db, id);
+  const html = mailer.ventaHtml(nv, 'Un comprador no reconoce esta compra', `Emprendimiento: ${esc(nv.nombre_comercial)}<br>Motivo: ${esc(m)}`);
+  for (const a of await adminEmails(db)) await mailer.queue(a, `Compra reportada N.º ${id} - ${nv.nombre_comercial}`, html);
+  return nv;
+}
+
+async function resolverReporte(actor, id, accion, nota) {
+  const db = DB.get();
+  const v = await loadVenta(db, id);
+  if (!v || v.reporte_estado !== 'pendiente') fail('Esta venta no tiene un reporte pendiente');
+  if (!['anular', 'descartar'].includes(accion)) fail('Acción inválida');
+  const n = String(nota || '').trim().slice(0, 200);
+  if (accion === 'anular' && v.estado !== 'anulada') {
+    await anular(actor, id, `Reporte del comprador: ${v.reporte}${n ? ' · ' + n : ''}`, { forzar: true });
+  }
+  await db.tx(async (q) => {
+    await q.run(`UPDATE ventas SET reporte_estado='resuelto', actualizado=@now WHERE id=@id`, { id, now: new Date() });
+    await historial(q, id, actor.id, 'reporte_resuelto', { motivo: (accion === 'anular' ? 'Anulada' : 'Reporte descartado') + (n ? ': ' + n : '') });
+  });
+  const nv = await loadVenta(db, id);
+  await mailer.queue(nv.comprador_email, `Tu reporte de la compra N.º ${id}`, mailer.ventaHtml(nv,
+    accion === 'anular' ? 'Revisamos tu reporte: la compra fue anulada y tu saldo devuelto' : 'Revisamos tu reporte: la compra se mantiene', n ? `Nota: ${esc(n)}` : ''));
+  return nv;
+}
+
 async function notificarConfirmada(v) {
   await mailer.queue(v.comprador_email, `Comprobante de compra N.º ${v.id} - ${v.nombre_comercial}`, mailer.ventaHtml(v, '¡Gracias por tu compra!'));
 }
@@ -332,6 +445,7 @@ async function notificarConfirmada(v) {
 async function tareasProgramadas() {
   const db = DB.get();
   const now = new Date();
+  await db.run('DELETE FROM codigos_pago WHERE expira < @limite', { limite: addHours(now, -24) });
   const vencidasConf = await db.query(`SELECT id FROM ventas WHERE estado='por_confirmar' AND expira_confirmacion < @now`, { now });
   for (const r of vencidasConf) {
     try {
@@ -353,4 +467,5 @@ async function tareasProgramadas() {
   }
 }
 
-module.exports = { crear, editar, anular, confirmar, marcarEntregado, loadVenta, getConfig, tareasProgramadas, FORMAS };
+module.exports = { crear, editar, anular, confirmar, marcarEntregado, loadVenta, getConfig, tareasProgramadas, FORMAS,
+  generarCodigoPago, reportar, resolverReporte };

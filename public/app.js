@@ -38,7 +38,13 @@
   // ================= API =================
   const S = { token: localStorage.getItem('feria_token'), me: null, tab: null, cache: {} };
   async function api(method, path, body) {
-    const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', ...(S.token ? { Authorization: 'Bearer ' + S.token } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    let r;
+    try {
+      r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', ...(S.token ? { Authorization: 'Bearer ' + S.token } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    } catch (_) {
+      // Wi-Fi caído: las ventas llevan una clave única, así que reintentar no las duplica
+      throw new Error('Sin conexión con el servidor. Revisa el Wi-Fi e intenta de nuevo.');
+    }
     let j = null;
     try { j = await r.json(); } catch (_) { /* vacío */ }
     if (r.status === 401 && path !== '/api/login') { logout(); throw new Error(j?.error || 'Sesión expirada'); }
@@ -174,14 +180,30 @@
     if (!S.me || document.hidden || $('#modal-root').innerHTML) return;
     try {
       if (S.me.es_comprador) {
-        const prev = S.me.por_confirmar;
+        const prev = S.me.por_confirmar, prevCompra = S.me.ultima_compra_saldo;
         await loadMe(); renderNav();
-        if (S.tab === 'inicio' && prev !== S.me.por_confirmar) go('inicio');
+        const nuevaCompra = S.me.ultima_compra_saldo > prevCompra;
+        if (nuevaCompra) avisoCompra(S.me.ultima_compra_saldo);
+        if (S.tab === 'inicio' && (prev !== S.me.por_confirmar || nuevaCompra)) go('inicio');
         else if (S.me.por_confirmar > prev) toast('Tienes una compra por confirmar');
       }
       if (S.tab === 'panel') VIEWS.panel($('#main'), true);
     } catch (_) { /* sin conexión momentánea */ }
   }, 15000);
+
+  // Aviso inmediato al comprador cada vez que se cobra algo con su saldo: si no fue él, lo reporta en el momento
+  async function avisoCompra(id) {
+    S.payCode = null;
+    try {
+      const v = await api('GET', '/api/ventas/' + id);
+      if ($('#modal-root').innerHTML) return toast(`Se cobró ${fmt(v.total_saldo)} de tu saldo en ${v.nombre_comercial}`);
+      const b = modal('Compra con tu saldo', `<div class="stack"><p style="margin:0">Se registró una compra en <strong>${esc(v.nombre_comercial)}</strong> por <strong>${fmt(v.total_saldo)}</strong> de tu saldo.</p>
+        <p class="small muted" style="margin:0">${v.detalle.map(d => `${d.cantidad}× ${esc(d.descripcion)}`).join(', ')}</p>
+        <div class="btns"><button class="btn primary grow" id="ac-ok">Sí, fui yo</button><button class="btn danger grow" id="ac-no">No fui yo</button></div></div>`);
+      $('#ac-ok', b).onclick = closeModal;
+      $('#ac-no', b).onclick = () => { closeModal(); openVenta(id, () => S.tab === 'inicio' && go('inicio')); };
+    } catch (_) { /* sin conexión: queda el correo */ }
+  }
 
   // ================= Elementos comunes =================
   function estadoBadges(v) {
@@ -190,6 +212,7 @@
     else if (v.estado === 'por_confirmar') b.push('<span class="badge b-warn">Por confirmar</span>');
     else b.push('<span class="badge b-ok">Confirmada</span>');
     if (v.estado !== 'anulada' && v.estado_entrega === 'pendiente') b.push('<span class="badge b-info">Entrega pendiente</span>');
+    if (v.reporte_estado === 'pendiente') b.push('<span class="badge b-bad">Reportada</span>');
     return b.join(' ');
   }
   function ventaItem(v, who) {
@@ -212,14 +235,22 @@
     const esVend = v.emprendedor_usuario_id === me.id, esComp = v.comprador_id === me.id, esSuper = me.rol === 'superadmin';
     const acc = [];
     if (esComp && v.estado === 'por_confirmar') acc.push('<button class="btn primary grow" data-a="conf">Confirmar compra</button><button class="btn danger grow" data-a="rech">Rechazar</button>');
-    if (esVend && v.estado === 'por_confirmar') acc.push('<button class="btn primary grow" data-a="pin">Confirmar con PIN</button>');
+    if (esVend && v.estado === 'por_confirmar') acc.push(`<button class="btn primary grow" data-a="pin">Confirmar con ${authLabel().toLowerCase()}</button>`);
+    const esAdmin = ['admin', 'superadmin'].includes(me.rol);
+    if (esComp && v.estado === 'confirmada' && Number(v.total_saldo) > 0 && !v.reporte_estado) acc.push('<button class="btn danger grow" data-a="rep">No reconozco esta compra</button>');
+    if (esAdmin && v.reporte_estado === 'pendiente') acc.push('<button class="btn danger grow" data-a="rep-anul">Anular por reporte</button><button class="btn grow" data-a="rep-desc">Descartar reporte</button>');
     if (esVend && v.estado === 'confirmada' && v.estado_entrega === 'pendiente') acc.push('<button class="btn primary grow" data-a="ent">Marcar entregado</button>');
     if (esVend && v.estado !== 'anulada') acc.push('<button class="btn grow" data-a="edit">Modificar</button>');
     if ((esVend || esSuper) && v.estado !== 'anulada') acc.push('<button class="btn danger grow" data-a="anul">Anular</button>');
     if ((esVend || esComp || ['admin', 'superadmin'].includes(me.rol)) && v.estado !== 'por_confirmar') acc.push('<button class="btn grow" data-a="mail">Enviar por correo</button>');
-    const ACC = { creada: 'Registrada', modificada: 'Modificada', confirmada: 'Confirmada por el comprador', anulada: 'Anulada', anulada_automatica: 'Anulada automáticamente', entregada: 'Entregada' };
+    const ACC = { creada: 'Registrada', modificada: 'Modificada', confirmada: 'Confirmada por el comprador', anulada: 'Anulada', anulada_automatica: 'Anulada automáticamente', entregada: 'Entregada',
+      reportada: 'Reportada por el comprador', reporte_resuelto: 'Reporte revisado' };
+    const MEDIO = { pin: 'con PIN', codigo: 'con código de pago', app: 'desde la app del comprador' };
     b.innerHTML = `<div class="stack">
       <div>${estadoBadges(v)}</div>
+      ${v.reporte_estado === 'pendiente' ? `<div class="alert bad"><strong>Reportada por el comprador:</strong> ${esc(v.reporte)}<div class="tiny" style="margin-top:4px">${esAdmin ? 'Revisa con el emprendedor antes de decidir.' : 'Un administrador la está revisando.'}</div></div>` : ''}
+      ${v.reporte_estado === 'resuelto' ? '<div class="alert info small">El reporte del comprador ya fue revisado (ver historial).</div>' : ''}
+      ${v.estado === 'confirmada' && MEDIO[v.confirmada_por] ? `<div class="tiny muted">Pago con saldo autorizado ${MEDIO[v.confirmada_por]}.</div>` : ''}
       ${v.estado === 'por_confirmar' ? `<div class="alert warn">Esperando que el comprador confirme el pago con saldo (vence a las ${ftime(v.expira_confirmacion)}).</div>` : ''}
       ${v.estado === 'anulada' ? `<div class="alert bad">Motivo: ${esc(v.motivo_anulacion)}</div>` : ''}
       ${v.estado !== 'anulada' && v.fecha_limite_entrega && v.estado_entrega === 'pendiente' ? `<div class="alert info">Entregar a más tardar el ${fdate(v.fecha_limite_entrega, { weekday: 'short' })}. Si no se entrega, se anula automáticamente.</div>` : ''}
@@ -241,9 +272,23 @@
         if (a === 'mail') return guard(btn, async () => { const r = await api('POST', `/api/ventas/${id}/reenviar`, {}); toast('Comprobante enviado a ' + r.para); });
         if (a === 'edit') { closeModal(); return editVenta(v); }
         if (a === 'pin') {
-          const r = await ask('PIN del comprador', `<p class="muted small">Pide a ${esc(v.comprador_nombre)} que escriba su PIN.</p><input class="input pin" name="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off">`, 'Confirmar');
+          const r = await ask(authLabel() + ' del comprador', `<p class="muted small">Pide a ${esc(v.comprador_nombre)} que escriba ${S.me.evento.pago_con_pin ? 'el código de pago de su celular (6 dígitos) o su PIN (4 dígitos)' : 'el código de pago de su celular (6 dígitos)'}, sin decirlo en voz alta.</p><input class="input pin" name="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off">`, 'Confirmar');
           if (!r) return openVenta(id, after);
           return guard($('#q-ok'), async () => { await api('POST', `/api/ventas/${id}/confirmar`, { pin: r.pin }); done('Venta confirmada'); });
+        }
+        if (a === 'rep') {
+          const r = await ask('No reconozco esta compra', `<p class="small">Si no hiciste esta compra o no recibiste el producto, cuéntanos. Un administrador la revisará con el emprendedor y, si corresponde, se anulará y se devolverá tu saldo.</p>
+            <p class="small"><strong>Cambia tu PIN</strong> en Mi cuenta si crees que alguien lo conoce, y usa el código de pago para tus próximas compras.</p>
+            <label class="field"><span>¿Qué pasó?</span><textarea class="input" name="motivo" rows="3" required></textarea></label>`, 'Enviar reporte', true);
+          if (!r) return openVenta(id, after);
+          return guard($('#q-ok'), async () => { await api('POST', `/api/ventas/${id}/reportar`, { motivo: r.motivo }); done('Reporte enviado. Te avisaremos por correo.'); });
+        }
+        if (a === 'rep-anul' || a === 'rep-desc') {
+          const anula = a === 'rep-anul';
+          const r = await ask(anula ? 'Anular por reporte' : 'Descartar reporte', `<p class="small">${anula ? 'Se anulará la venta, se devolverá el saldo al comprador y el stock al emprendedor.' : 'La venta se mantiene. El comprador recibirá un correo con tu nota.'}</p>
+            <label class="field"><span>Nota (se envía al comprador)</span><textarea class="input" name="nota" rows="2"></textarea></label>`, anula ? 'Anular venta' : 'Descartar', anula);
+          if (!r) return openVenta(id, after);
+          return guard($('#q-ok'), async () => { await api('POST', `/api/admin/ventas/${id}/reporte`, { accion: anula ? 'anular' : 'descartar', nota: r.nota }); done(anula ? 'Venta anulada' : 'Reporte descartado'); });
         }
         if (a === 'anul') {
           const r = await ask('Anular venta', `<p class="small">Se devolverá el stock${Number(v.total_saldo) > 0 ? ' y el saldo del comprador' : ''}. Esta acción queda registrada.</p><label class="field"><span>Motivo</span><textarea class="input" name="motivo" rows="2" required></textarea></label>`, 'Anular venta', true);
@@ -258,7 +303,10 @@
   const VIEWS = {};
 
   // ---------- Vender (crear / modificar) ----------
-  function newSale() { return { comprador: null, cart: {}, pagos: { saldo: '', efectivo: '', transferencia: '' }, touched: false, auth: 'pin', pin: '', editId: null, orig: {}, motivo: '' }; }
+  // idem: clave única de esta venta. Si se reenvía (doble toque, Wi-Fi que se corta), el servidor devuelve la misma venta.
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+  function newSale() { return { comprador: null, cart: {}, pagos: { saldo: '', efectivo: '', transferencia: '' }, touched: false, auth: 'pin', pin: '', editId: null, orig: {}, motivo: '', idem: uid() }; }
+  const authLabel = () => S.me.evento.pago_con_pin ? 'PIN o código' : 'Código de pago';
   S.sale = newSale();
 
   function editVenta(v) {
@@ -413,11 +461,15 @@
     if (box.dataset.state === 'auth-' + s.auth) return;
     box.dataset.state = 'auth-' + s.auth;
     box.innerHTML = `<hr class="sep"><div style="font-weight:600;margin-bottom:6px">Autorización del comprador</div>
-      <div class="chips" style="margin-bottom:10px"><button class="chip ${s.auth === 'pin' ? 'on' : ''}" data-auth="pin">PIN aquí</button><button class="chip ${s.auth === 'app' ? 'on' : ''}" data-auth="app">Aprobar en su celular</button></div>
-      ${s.auth === 'pin' ? `<input class="input pin" id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••" value="${esc(s.pin)}"><div class="tiny muted center" style="margin-top:6px">El comprador escribe su PIN de 4 dígitos</div>`
+      <div class="chips" style="margin-bottom:10px"><button class="chip ${s.auth === 'pin' ? 'on' : ''}" data-auth="pin">${authLabel()} aquí</button><button class="chip ${s.auth === 'app' ? 'on' : ''}" data-auth="app">Aprobar en su celular</button></div>
+      ${s.auth === 'pin' ? `<input class="input pin" id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="${S.me.evento.pago_con_pin ? '••••' : '••••••'}" value="${esc(s.pin)}">
+        <div class="tiny muted center" style="margin-top:6px">${S.me.evento.pago_con_pin
+          ? 'El comprador escribe su <strong>código de pago</strong> (6 dígitos, desde su celular) o su PIN (4 dígitos). Recomendado: el código, porque solo sirve una vez.'
+          : 'El comprador escribe el <strong>código de pago</strong> de 6 dígitos que genera en su celular (Inicio → Pagar con código).'}
+          Pídele que lo escriba él mismo, sin decirlo en voz alta.</div>`
       : `<div class="alert info small">La venta quedará <strong>por confirmar</strong>. El comprador debe aprobarla en la app (Mis compras) en los próximos ${S.me.evento.minutos_confirmacion} minutos; si no, se anula sola.</div>`}`;
     box.querySelectorAll('[data-auth]').forEach(b => { b.onclick = () => { s.auth = b.dataset.auth; box.dataset.state = ''; updateTotals(); }; });
-    const pin = $('#pin'); if (pin) pin.oninput = () => { s.pin = pin.value.replace(/\D/g, '').slice(0, 4); pin.value = s.pin; };
+    const pin = $('#pin'); if (pin) pin.oninput = () => { s.pin = pin.value.replace(/\D/g, '').slice(0, 6); pin.value = s.pin; };
   }
 
   async function saveSale(btn) {
@@ -428,16 +480,21 @@
     if (paid !== total) return toast('Las formas de pago no cuadran con el total', true);
     if (saldo > saldoMax) return toast('Saldo insuficiente', true);
     const needAuth = saldo > 0 && (!s.editId || saldo > c2(s.comprador.saldo_previo || 0));
-    if (needAuth && s.auth === 'pin' && s.pin.length !== 4) return toast('Ingresa el PIN de 4 dígitos o elige "Aprobar en su celular"', true);
+    const largos = S.me.evento.pago_con_pin ? [4, 6] : [6];
+    if (needAuth && s.auth === 'pin' && !largos.includes(s.pin.length)) {
+      return toast(S.me.evento.pago_con_pin ? 'Ingresa el código de 6 dígitos o el PIN de 4, o elige "Aprobar en su celular"' : 'Ingresa el código de pago de 6 dígitos o elige "Aprobar en su celular"', true);
+    }
     const body = {
       comprador_id: s.comprador.id,
       items: Object.entries(s.cart).map(([pid, l]) => ({ producto_id: Number(pid), cantidad: l.cant, entrega_posterior: l.later })),
       pagos: ['saldo', 'efectivo', 'transferencia'].map(f => ({ forma: f, monto: m2(c2(s.pagos[f])) })).filter(p => p.monto > 0),
       pin: needAuth && s.auth === 'pin' ? s.pin : undefined, motivo: s.motivo || undefined,
+      idem: s.editId ? undefined : s.idem,
     };
     await guard(btn, async () => {
       const v = s.editId ? await api('PUT', '/api/ventas/' + s.editId, body) : await api('POST', '/api/ventas', body);
       S.sale = newSale();
+      S.cache.prods = null;
       const b = modal(s.editId ? 'Venta modificada' : 'Venta registrada', `<div class="success"><div class="ic">${icon('check', 34)}</div>
         <h2>${fmt(v.total)}</h2><p class="muted" style="margin:4px 0 12px">N.º ${v.id} · ${esc(v.comprador_nombre)}</p>
         ${v.estado === 'por_confirmar' ? '<div class="alert warn">Pendiente: el comprador debe confirmarla en su celular.</div>' : ''}
@@ -478,11 +535,20 @@
   // ---------- Productos ----------
   VIEWS.productos = async (main) => {
     const prods = await api('GET', '/api/productos');
-    main.innerHTML = `<div class="section-title"><h2>Mis productos</h2><button class="btn primary sm" id="b-add">+ Agregar</button></div>
+    const catAct = S.me.emprendimiento.categoria || '';
+    main.innerHTML = `<div class="card ${catAct ? '' : 'flat'}" style="${catAct ? '' : 'border:2px solid var(--accent)'}">
+        <label class="field"><span>Categoría de tu emprendimiento en el catálogo</span>
+        <select class="input" id="mi-cat"><option value="">— Elige una categoría —</option>${S.me.categorias.map(c => `<option ${c === catAct ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+        ${catAct ? '' : '<div class="tiny" style="margin-top:6px;color:var(--warn)">Mientras no elijas, apareces en "Otros". Elige la que mejor describa lo que vendes para que los compradores te encuentren.</div>'}</div>
+      <div class="section-title"><h2>Mis productos</h2><button class="btn primary sm" id="b-add">+ Agregar</button></div>
       <div class="list">${prods.length ? prods.map(p => `<button class="item" data-p="${p.id}"><div class="grow"><div class="t">${esc(p.nombre)} ${p.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</div>
         <div class="s">${p.descripcion ? esc(p.descripcion) : ''}</div></div><div class="right"><div class="amt">${fmt(p.precio)}</div>
         <div class="tiny"><span class="badge ${p.stock > 0 ? 'b-ok' : 'b-warn'}">Stock ${p.stock}</span></div></div></button>`).join('') : '<div class="empty">Agrega los productos que venderás en la feria.</div>'}</div>
       <p class="tiny muted" style="margin-top:12px">El stock es lo disponible el día del evento. Los pedidos con entrega posterior no lo descuentan.</p>`;
+    $('#mi-cat').onchange = async (e) => {
+      try { await api('PUT', '/api/mi-emprendimiento', { categoria: e.target.value }); await loadMe(); toast('Categoría guardada'); go('productos'); }
+      catch (err) { toast(err.message, true); }
+    };
     $('#b-add').onclick = () => prodForm();
     main.querySelectorAll('[data-p]').forEach(b => { b.onclick = () => prodForm(prods.find(p => p.id === Number(b.dataset.p))); });
   };
@@ -512,7 +578,12 @@
     const pend = compras.filter(v => v.estado === 'por_confirmar');
     main.innerHTML = `<div class="balance"><div class="lbl">Saldo disponible para compras</div><div class="big">${fmt(s.disponible)}</div>
         <div class="meta"><span>Asignado ${fmt(s.asignado)}</span><span>Usado ${fmt(s.usado)}</span></div></div>
-      ${S.me.pin_temporal ? '<div class="alert warn" style="margin-top:12px">Te recomendamos cambiar el PIN que recibiste por correo. <a href="#cuenta" id="go-c">Cambiar PIN</a></div>' : ''}
+      ${s.disponible > 0 ? `<div class="card paycode" style="margin-top:12px" id="paycode">
+        <div style="font-weight:700">Pagar con mi saldo</div>
+        <p class="small muted" style="margin:4px 0 10px">Genera un código y escríbelo tú mismo en el equipo del vendedor. Sirve <strong>una sola vez</strong> y vence en ${S.me.evento.minutos_codigo_pago} minutos: aunque alguien lo vea, después no le sirve.</p>
+        <div id="pc-box"></div>
+        <button class="btn primary block lg" id="b-code">Generar código de pago</button></div>` : ''}
+      ${S.me.pin_temporal && S.me.evento.pago_con_pin ? '<div class="alert warn" style="margin-top:12px">Te recomendamos cambiar el PIN que recibiste por correo. <a href="#cuenta" id="go-c">Cambiar PIN</a></div>' : ''}
       ${pend.length ? `<div class="section-title"><h2>Por confirmar</h2></div>${pend.map(v => `<div class="card" style="border:2px solid var(--accent)">
           <div class="spread"><div><strong>${esc(v.nombre_comercial)}</strong><div class="small muted">N.º ${v.id} · ${ftime(v.creado)} · vence ${ftime(v.expira_confirmacion)}</div></div><div style="font-size:20px;font-weight:700" class="num">${fmt(v.total)}</div></div>
           <div class="small" style="margin:8px 0">${v.detalle.map(d => `${d.cantidad}× ${esc(d.descripcion)}`).join(', ')}</div>
@@ -521,6 +592,12 @@
       <div class="section-title"><h2>Mis compras</h2></div>
       <div class="list" id="cl">${compras.filter(v => v.estado !== 'por_confirmar').map(v => ventaItem(v, 'comprador')).join('') || '<div class="empty">Aún no tienes compras</div>'}</div>`;
     const gc = $('#go-c'); if (gc) gc.onclick = (e) => { e.preventDefault(); go('cuenta'); };
+    const bc = $('#b-code');
+    if (bc) bc.onclick = () => guard(bc, async () => {
+      const r = await api('POST', '/api/me/codigo-pago', {});
+      showPayCode(r);
+    });
+    if (S.payCode && new Date(S.payCode.expira) > new Date()) showPayCode(S.payCode);
     main.querySelectorAll('[data-ok]').forEach(b => { b.onclick = () => guard(b, async () => { await api('POST', `/api/ventas/${b.dataset.ok}/confirmar`, {}); toast('Compra confirmada'); go('inicio'); }); });
     main.querySelectorAll('[data-no]').forEach(b => { b.onclick = async () => {
       if (!(await ask('Rechazar compra', '<p>La venta se anulará y tu saldo quedará libre.</p>', 'Rechazar', true))) return;
@@ -529,21 +606,113 @@
     bindVentaItems($('#cl'), () => go('inicio'));
   };
 
-  // ---------- Catálogo ----------
-  VIEWS.catalogo = async (main) => {
-    const prods = await api('GET', '/api/catalogo');
-    const emps = [...new Map(prods.map(p => [p.emprendimiento_id, p.nombre_comercial])).entries()];
-    main.innerHTML = `<input class="input" id="cq" placeholder="Buscar producto o emprendimiento" style="margin-bottom:12px"><div id="cat"></div>`;
-    const paint = () => {
-      const t = $('#cq').value.trim().toLowerCase();
-      $('#cat').innerHTML = emps.map(([id, name]) => {
-        const ps = prods.filter(p => p.emprendimiento_id === id && (!t || p.nombre.toLowerCase().includes(t) || name.toLowerCase().includes(t)));
-        if (!ps.length) return '';
-        return `<div class="section-title"><h3>${esc(name)}</h3></div><div class="list">${ps.map(p => `<div class="item" style="cursor:default"><div class="grow"><div class="t">${esc(p.nombre)}</div>
-          <div class="s">${p.descripcion ? esc(p.descripcion) + ' · ' : ''}${p.stock > 0 ? `${p.stock} disponibles` : 'Bajo pedido'}</div></div><div class="amt">${fmt(p.precio)}</div></div>`).join('')}</div>`;
-      }).join('') || '<div class="empty">No hay productos todavía</div>';
+  // Muestra el código de pago con una barra de tiempo; al vencer, se borra de la pantalla
+  function showPayCode(r) {
+    S.payCode = r;
+    const box = $('#pc-box'), btn = $('#b-code');
+    if (!box) return;
+    const total = new Date(r.expira) - Date.now();
+    clearInterval(showPayCode._t);
+    const tick = () => {
+      const left = new Date(r.expira) - Date.now();
+      if (!box.isConnected) return clearInterval(showPayCode._t);
+      if (left <= 0) {
+        clearInterval(showPayCode._t); S.payCode = null;
+        box.innerHTML = '<div class="alert warn small">El código venció. Genera uno nuevo cuando vayas a pagar.</div>';
+        if (btn) btn.textContent = 'Generar código de pago';
+        return;
+      }
+      const m = Math.floor(left / 60000), sgs = Math.floor(left / 1000) % 60;
+      box.innerHTML = `<div class="code" aria-label="Código de pago">${esc(r.codigo.replace(/(\d{3})(\d{3})/, '$1 $2'))}</div>
+        <div class="bar"><i style="width:${Math.max(0, left / total * 100)}%"></i></div>
+        <div class="tiny muted">Vence en ${m}:${String(sgs).padStart(2, '0')} · Escríbelo tú, no lo digas en voz alta</div>`;
     };
-    $('#cq').oninput = paint; paint();
+    tick(); showPayCode._t = setInterval(tick, 1000);
+    if (btn) btn.textContent = 'Generar otro código';
+  }
+
+  // ---------- Catálogo ----------
+  // Orden justo: cada comprador ve los emprendimientos en un orden aleatorio distinto, fijo durante el día
+  // (no salta al refrescar). Así ningún emprendimiento queda siempre arriba ni siempre al final.
+  function seededShuffle(arr, seedText) {
+    let h = 1779033703 ^ seedText.length;
+    for (let i = 0; i < seedText.length; i++) { h = Math.imul(h ^ seedText.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+    let a = h >>> 0;
+    const rand = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const out = arr.slice();
+    for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }
+    return out;
+  }
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  function highlight(text, q) {
+    if (!q) return esc(text);
+    const i = norm(text).indexOf(q);
+    if (i < 0) return esc(text);
+    return esc(text.slice(0, i)) + '<mark>' + esc(text.slice(i, i + q.length)) + '</mark>' + esc(text.slice(i + q.length));
+  }
+
+  VIEWS.catalogo = async (main) => {
+    const data = await api('GET', '/api/catalogo');
+    const hoy = new Date().toISOString().slice(0, 10);
+    const emps = seededShuffle(data.emprendimientos, `${S.me.id}|${hoy}`);
+    const C = S.cache.cat || (S.cache.cat = { q: '', cat: '', open: new Set() });
+    const porCat = (c) => emps.filter(e => e.categoria === c);
+    const cats = data.categorias.filter(c => porCat(c).length);
+    const nProd = emps.reduce((a, e) => a + e.productos.length, 0);
+    main.innerHTML = `<div class="cat-tools">
+        <input class="input" id="cq" placeholder="Buscar producto o emprendimiento" value="${esc(C.q)}" autocomplete="off" inputmode="search">
+        <div class="chips" style="margin-top:10px" id="cc">
+          <button class="chip ${C.cat ? '' : 'on'}" data-c="">Todas<span class="n">${emps.length}</span></button>
+          ${cats.map(c => `<button class="chip ${C.cat === c ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}<span class="n">${porCat(c).length}</span></button>`).join('')}
+        </div></div>
+      <div class="tiny muted" style="margin:0 2px 4px">${emps.length} emprendimientos · ${nProd} productos · el orden es aleatorio para que todos tengan la misma visibilidad</div>
+      <div id="cat"></div>`;
+
+    const empCard = (e, q) => {
+      const nameHit = q && norm(e.nombre_comercial).includes(q);
+      const prods = q && !nameHit ? e.productos.filter(p => norm(p.nombre).includes(q) || norm(p.descripcion).includes(q)) : e.productos;
+      if (q && !prods.length) return '';
+      const open = !!q || C.open.has(e.id);
+      // Primero lo disponible hoy; lo que está bajo pedido, al final
+      const orden = prods.slice().sort((a, b) => (b.stock > 0) - (a.stock > 0) || a.nombre.localeCompare(b.nombre, 'es'));
+      const precios = e.productos.map(p => p.precio);
+      const rango = precios.length ? (Math.min(...precios) === Math.max(...precios) ? fmt(precios[0]) : `${fmt(Math.min(...precios))} – ${fmt(Math.max(...precios))}`) : '';
+      return `<div class="emp ${open ? 'open' : ''}" data-emp="${e.id}">
+        <button type="button" aria-expanded="${open}"><div class="ini">${esc(initials(e.nombre_comercial))}</div>
+          <div><div class="t">${highlight(e.nombre_comercial, q)}</div><div class="s">${C.cat || q ? esc(e.categoria) + ' · ' : ''}${e.productos.length} ${e.productos.length === 1 ? 'producto' : 'productos'} · ${rango}</div></div>
+          <svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 6 6 6-6 6"/></svg></button>
+        ${open ? `<div class="prods">${orden.map(p => `<div class="item ${p.stock > 0 ? '' : 'out'}"><div class="grow"><div class="t">${highlight(p.nombre, q)}</div>
+          <div class="s">${p.descripcion ? highlight(p.descripcion, q) + ' · ' : ''}${p.stock > 0 ? `${p.stock} disponibles` : 'Sin stock hoy · bajo pedido'}</div></div><div class="amt">${fmt(p.precio)}</div></div>`).join('')}</div>` : ''}
+      </div>`;
+    };
+
+    const paint = () => {
+      const q = norm(C.q.trim());
+      let html = '';
+      if (q) {
+        // Búsqueda: todos los emprendimientos que coinciden, en el mismo orden aleatorio
+        const res = emps.filter(e => !C.cat || e.categoria === C.cat).map(e => empCard(e, q)).filter(Boolean);
+        html = res.length ? `<div class="cat-h"><h2>Resultados</h2><span>${res.length} ${res.length === 1 ? 'emprendimiento' : 'emprendimientos'}</span></div>${res.join('')}`
+          : '<div class="empty">No encontramos ese producto. Prueba con otra palabra.</div>';
+      } else {
+        html = (C.cat ? [C.cat] : cats).map(c => `<div class="cat-h"><h2>${esc(c)}</h2><span>${porCat(c).length} ${porCat(c).length === 1 ? 'emprendimiento' : 'emprendimientos'}</span></div>${porCat(c).map(e => empCard(e, '')).join('')}`).join('')
+          || '<div class="empty">No hay productos todavía</div>';
+      }
+      $('#cat').innerHTML = html;
+      $('#cat').querySelectorAll('[data-emp] > button').forEach(b => { b.onclick = () => {
+        if (C.q.trim()) return;
+        const id = Number(b.parentElement.dataset.emp);
+        if (C.open.has(id)) C.open.delete(id); else C.open.add(id);
+        paint();
+      }; });
+    };
+    $('#cq').oninput = debounce(() => { C.q = $('#cq').value; paint(); }, 200);
+    $('#cc').querySelectorAll('[data-c]').forEach(b => { b.onclick = () => {
+      C.cat = b.dataset.c;
+      $('#cc').querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b));
+      paint(); window.scrollTo(0, 0);
+    }; });
+    paint();
   };
 
   // ---------- Mi cuenta ----------
@@ -575,6 +744,7 @@
     const totalF = Number(T.saldo) + Number(T.efectivo) + Number(T.transferencia);
     const max = Math.max(1, ...r.por_emprendimiento.map(e => e.total));
     main.innerHTML = `<div class="spread" style="margin-bottom:12px"><h2>En vivo</h2><span class="tiny muted">Actualizado ${ftime(r.generado)} · cada 15 s</span></div>
+      ${r.reportes_pendientes ? `<div class="alert bad spread" style="margin-bottom:12px"><span><strong>${r.reportes_pendientes}</strong> ${r.reportes_pendientes === 1 ? 'compra reportada' : 'compras reportadas'} por compradores que no las reconocen.</span><button class="btn sm" id="b-rep">Revisar</button></div>` : ''}
       <div class="kpis">
         <div class="kpi"><div class="l">Total vendido</div><div class="v">${fmt(T.total)}</div><div class="d">${T.ventas} ${T.ventas === 1 ? 'venta confirmada' : 'ventas confirmadas'}</div></div>
         <div class="kpi"><div class="l">Compradores atendidos</div><div class="v">${T.compradores}</div><div class="d">de ${r.saldos.compradores} empleados</div></div>
@@ -589,6 +759,7 @@
       <div class="section-title"><h2>Últimas transacciones</h2><button class="btn sm" id="b-all">Ver todas</button></div>
       <div class="list" id="ul">${r.ultimas.map(v => ventaItem(v, 'admin')).join('') || '<div class="empty">Aún no hay ventas</div>'}</div>`;
     $('#b-all').onclick = () => go('aventas');
+    const br = $('#b-rep'); if (br) br.onclick = () => { S.cache.af = { q: '', emp: '', estado: 'reportada' }; go('aventas'); };
     bindVentaItems($('#ul'), () => go('panel'));
   };
 
@@ -598,12 +769,14 @@
     const F = S.cache.af || (S.cache.af = { q: '', emp: '', estado: '' });
     main.innerHTML = `<div class="stack"><input class="input" id="aq" placeholder="Cédula, comprador o N.º de venta" value="${esc(F.q)}">
       <select class="input" id="ae"><option value="">Todos los emprendimientos</option>${emps.map(e => `<option value="${e.id}" ${String(F.emp) === String(e.id) ? 'selected' : ''}>${esc(e.nombre_comercial)}</option>`).join('')}</select>
-      <div class="chips">${[['', 'Todas'], ['confirmada', 'Confirmadas'], ['por_confirmar', 'Por confirmar'], ['pendiente', 'Por entregar'], ['anulada', 'Anuladas']].map(([k, l]) => `<button class="chip ${F.estado === k ? 'on' : ''}" data-e="${k}">${l}</button>`).join('')}</div></div>
+      <div class="chips">${[['', 'Todas'], ['confirmada', 'Confirmadas'], ['por_confirmar', 'Por confirmar'], ['pendiente', 'Por entregar'], ['reportada', 'Reportadas'], ['anulada', 'Anuladas']].map(([k, l]) => `<button class="chip ${F.estado === k ? 'on' : ''}" data-e="${k}">${l}</button>`).join('')}</div></div>
       <div class="spread" style="margin:14px 2px 8px"><span class="small muted" id="acount"></span><button class="btn sm" id="ax">Exportar CSV</button></div><div class="list" id="al"></div>`;
     const load = async () => {
       const p = new URLSearchParams();
       if (F.q) p.set('q', F.q); if (F.emp) p.set('emprendimiento_id', F.emp);
-      if (F.estado === 'pendiente') { p.set('estado', 'confirmada'); p.set('entrega', 'pendiente'); } else if (F.estado) p.set('estado', F.estado);
+      if (F.estado === 'pendiente') { p.set('estado', 'confirmada'); p.set('entrega', 'pendiente'); }
+      else if (F.estado === 'reportada') p.set('reporte', 'pendiente');
+      else if (F.estado) p.set('estado', F.estado);
       const rows = await api('GET', '/api/admin/ventas?' + p);
       const tot = rows.filter(v => v.estado === 'confirmada').reduce((a, v) => a + c2(v.total), 0);
       $('#acount').textContent = `${rows.length}${rows.length >= 400 ? '+' : ''} ventas · confirmadas ${fmt(m2(tot))}`;
@@ -676,6 +849,7 @@
       <label class="field"><span>Correo</span><input class="input" name="email" type="email" value="${esc(u.email)}"></label>
       <div class="grid2"><label class="field"><span>Rol</span><select class="input" name="rol">${[['usuario', 'Usuario'], ['admin', 'Administrador'], ['superadmin', 'Super administrador']].map(([k, l]) => `<option value="${k}" ${u.rol === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="field"><span>Nombre comercial</span><input class="input" name="nombre_comercial" value="${esc(u.nombre_comercial)}" placeholder="Solo emprendedores"></label></div>
+      <label class="field"><span>Categoría del emprendimiento</span><select class="input" name="categoria"><option value="">— Sin categoría (Otros) —</option>${S.me.categorias.map(c => `<option ${c === u.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
       <label class="check"><input type="checkbox" name="es_comprador" ${u.es_comprador ? 'checked' : ''}> Es comprador (tiene saldo)</label>
       <div class="grid2"><label class="field"><span>Fecha de ingreso</span><input class="input" name="fecha_ingreso" type="date" value="${esc(u.fecha_ingreso)}"></label>
       <label class="field"><span>Saldo asignado</span><input class="input money" name="saldo_asignado" inputmode="decimal" value="${Number(u.saldo_asignado).toFixed(2)}"></label></div>
@@ -686,7 +860,7 @@
       <label class="check small"><input type="checkbox" id="rs-mail" ${u.email ? '' : 'disabled'}> Enviar también por correo</label><div id="rs-out"></div>`);
     $('#uf', b).onsubmit = (e) => {
       e.preventDefault(); const f = e.target;
-      const body = { nombres: f.nombres.value, apellidos: f.apellidos.value, email: f.email.value, rol: f.rol.value, nombre_comercial: f.nombre_comercial.value,
+      const body = { nombres: f.nombres.value, apellidos: f.apellidos.value, email: f.email.value, rol: f.rol.value, nombre_comercial: f.nombre_comercial.value, categoria: f.categoria.value,
         es_comprador: f.es_comprador.checked, fecha_ingreso: f.fecha_ingreso.value, saldo_asignado: Number(f.saldo_asignado.value.replace(',', '.')), activo: f.activo.checked };
       guard(f.querySelector('button'), async () => { await api('PUT', '/api/super/usuarios/' + u.id, body); closeModal(); toast('Usuario actualizado'); reload(); });
     };
@@ -719,7 +893,7 @@
       <input type="file" id="f-${k}" accept=".xlsx,.csv" class="input" style="padding:8px">${extra}
       <button class="btn primary block" data-imp="${k}" style="margin-top:10px">Importar</button><div id="o-${k}"></div></div>`;
     main.innerHTML = `<div class="section-title"><h2>Importar datos</h2><a class="btn sm" href="plantillas/plantilla_emprendedores.xlsx" download>Plantilla emprendedores</a></div>
-      ${fileBox('emprendedores', 'Emprendedores', 'Columnas: Cédula, Nombres, Apellidos, Nombre comercial, Contraseña, Email. Si la cédula ya existe, se actualiza.')}
+      ${fileBox('emprendedores', 'Emprendedores', 'Columnas: Cédula, Nombres, Apellidos, Nombre comercial, Contraseña, Email y, opcional, Categoría (una de las categorías configuradas abajo). Si la cédula ya existe, se actualiza.')}
       ${fileBox('compradores', 'Compradores', 'Columnas: Cédula, Nombres, Apellidos, Fecha de ingreso, Saldo, Email. A los nuevos se les genera contraseña temporal y PIN.', `<label class="check small"><input type="checkbox" id="recalc"> Ignorar la columna Saldo y calcularlo con la regla configurada</label>`)}
       <p class="tiny muted"><a href="plantillas/plantilla_compradores.xlsx" download>Descargar plantilla de compradores</a></p>
       <div class="section-title"><h2>Accesos de compradores</h2></div>
@@ -738,6 +912,12 @@
         <label class="field"><span>Más de … días</span><input class="input money" name="dias_antiguedad" value="${esc(cfg.dias_antiguedad)}"></label></div>
         <div class="grid2"><label class="field"><span>Plazo de entrega con saldo (horas)</span><input class="input money" name="horas_entrega_cxc" value="${esc(cfg.horas_entrega_cxc)}"></label>
         <label class="field"><span>Minutos para confirmar en la app</span><input class="input money" name="minutos_confirmacion" value="${esc(cfg.minutos_confirmacion)}"></label></div>
+        <label class="field"><span>Categorías del catálogo (en este orden, separadas por coma)</span><textarea class="input" name="categorias" rows="2">${esc(cfg.categorias)}</textarea></label>
+        <div class="grid2"><label class="field"><span>Pago con PIN de 4 dígitos</span><select class="input" name="pago_con_pin">
+            <option value="1" ${cfg.pago_con_pin !== '0' ? 'selected' : ''}>Permitido (PIN o código)</option>
+            <option value="0" ${cfg.pago_con_pin === '0' ? 'selected' : ''}>Desactivado (solo código o app)</option></select></label>
+          <label class="field"><span>Duración del código de pago (min)</span><input class="input money" name="minutos_codigo_pago" value="${esc(cfg.minutos_codigo_pago)}"></label></div>
+        <p class="tiny muted" style="margin:0">El código de pago lo genera el comprador en su celular y sirve una sola vez. Si desactivas el PIN, nadie puede pagar con un PIN escuchado; quien no tenga celular puede pagar en efectivo o pedir ayuda en la mesa de soporte.</p>
         <div class="btns"><button class="btn primary grow">Guardar reglas</button><button class="btn grow" type="button" id="b-recalc">Recalcular saldos de todos</button></div></form>
       <div class="section-title"><h2>Correos</h2><button class="btn sm" id="b-retry">Reintentar fallidos</button></div>
       <div class="card">${mail.smtp ? '' : '<div class="alert warn small" style="margin-bottom:10px">El servidor de correo (SMTP) no está configurado: los correos quedan en cola y se enviarán cuando se configure.</div>'}

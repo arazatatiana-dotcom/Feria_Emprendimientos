@@ -16,9 +16,15 @@ Es una aplicación web responsive para celular, tablet y PC. Hecha en Node.js co
 - **Saldo** = base ($5) + adicional ($20) si a la fecha del evento el empleado tiene **más de 90 días**. Los tres valores se editan en *Ajustes*. Si el Excel trae la columna *Saldo*, se usa ese valor; también se puede forzar el cálculo con la regla.
 - **Varias formas de pago por venta**: saldo, efectivo y transferencia. La suma debe cuadrar exactamente con el total.
 - **Lo pagado con saldo es cuenta por cobrar**: hay un reporte por empleado (para el descuento por rol) y una liquidación por emprendedor (lo que la empresa le debe pagar).
-- **Autorización del comprador** para pagar con saldo, de una de dos formas:
-  1. El comprador escribe su **PIN** de 4 dígitos en el equipo del vendedor (se bloquea 10 min tras 5 intentos fallidos).
-  2. La venta queda **por confirmar** y el comprador la aprueba desde su celular. Si no lo hace en 15 min, se anula sola y se libera el saldo y el stock.
+- **Autorización del comprador** para pagar con saldo, de una de tres formas:
+  1. **Código de pago** (recomendado): el comprador lo genera en su celular (*Inicio → Generar código de pago*) y lo escribe en el equipo del vendedor. Tiene 6 dígitos, **sirve una sola vez** y vence en 5 minutos, así que aunque alguien lo vea o lo escuche, después ya no le sirve.
+  2. **PIN** de 4 dígitos escrito en el equipo del vendedor. Se puede **desactivar** en *Ajustes* para que un PIN escuchado no sirva de nada.
+  3. La venta queda **por confirmar** y el comprador la aprueba desde su celular. Si no lo hace en 15 min, se anula sola y se libera el saldo y el stock.
+
+  El PIN y el código comparten el bloqueo: 5 intentos fallidos bloquean 10 minutos y se avisa al comprador por correo.
+- **Aviso inmediato y reporte**: cuando se cobra algo con su saldo, al comprador le aparece un aviso en la app ("¿Fuiste tú?") además del correo. Si no reconoce la compra, la **reporta** y los administradores la ven en el *Panel* y en *Ventas → Reportadas*. No se anula sola, porque alguien podría reportar algo que sí recibió: un administrador revisa con el emprendedor y decide si la anula (y se devuelve el saldo) o descarta el reporte. En ambos casos el comprador recibe un correo.
+- **Catálogo para 500 compradores y 32 emprendimientos**: se organiza por **categoría → emprendimiento → productos**, con buscador (ignora tildes) y filtro por categoría. Cada emprendimiento aparece plegado y se abre con un toque. El **orden de los emprendimientos es aleatorio para cada comprador** y se mantiene fijo durante el día: así ninguno queda siempre arriba ni siempre al final. Dentro de cada emprendimiento, primero lo disponible hoy y al final lo que es bajo pedido.
+- **Ventas sin duplicados**: cada venta lleva una clave única. Si el Wi-Fi se corta y el vendedor vuelve a tocar "Registrar", el servidor devuelve la misma venta en lugar de cobrarla dos veces.
 - **Stock**: solo se descuenta de lo que se entrega el día del evento. Los ítems marcados como *entrega posterior* no lo descuentan y la venta queda con *entrega pendiente*.
 - **Entrega posterior pagada con saldo**: el plazo máximo es de 72 h. Si vence sin entregarse, la venta se **anula automáticamente** y se envía un correo al vendedor, al comprador y a los administradores.
 - **Modificar o anular** lo hace el emprendedor dueño de la venta. La anulación exige un motivo. Todo queda en el **historial** de la venta (antes y después de cada cambio). Si una modificación aumenta el monto pagado con saldo, el comprador debe autorizarla de nuevo.
@@ -29,7 +35,7 @@ Es una aplicación web responsive para celular, tablet y PC. Hecha en Node.js co
 
 Las plantillas están en `public/plantillas/` y también se descargan desde *Ajustes*. Los encabezados se reconocen sin importar mayúsculas ni tildes.
 
-- **Emprendedores**: `Cédula, Nombres, Apellidos, Nombre comercial, Contraseña, Email`
+- **Emprendedores**: `Cédula, Nombres, Apellidos, Nombre comercial, Contraseña, Email` y, opcional, `Categoría` (debe ser una de las configuradas en *Ajustes*; si no viene, el emprendedor la elige en *Productos* o queda en "Otros")
 - **Compradores**: `Cédula, Nombres, Apellidos, Fecha de ingreso, Saldo, Email`
 
 Notas:
@@ -77,13 +83,14 @@ Usuarios demo (contraseña `demo123`, PIN `2580`): super admin `0000000000`, adm
 
 ## Antes del evento (lista de verificación)
 
-1. Ajustes: confirmar la fecha del evento (27/11/2026) y las reglas de saldo, y luego *Recalcular saldos* si cambiaron.
+1. Ajustes: confirmar la fecha del evento (27/11/2026) y las reglas de saldo, y luego *Recalcular saldos* si cambiaron. Revisar la lista de **categorías** y decidir si se permite el **PIN** o solo el código de pago.
 2. Importar el Excel de emprendedores y luego el de compradores. Revisar las filas con error.
 3. Crear las cuentas de administrador desde *Usuarios*.
 4. Enviar los accesos por correo y, para quien no tenga correo, imprimir las credenciales. Una vez entregados todos, usar *Ajustes → Borrar credenciales temporales* para que no queden contraseñas ni PIN legibles en la base.
-5. Pedir a los emprendedores que ingresen, cambien su contraseña y carguen sus productos.
-6. Hacer una venta de prueba y anularla.
-7. Durante el evento, tener una mesa de ayuda con un super administrador para resetear contraseñas y PIN.
+5. Pedir a los emprendedores que ingresen, cambien su contraseña, **elijan su categoría** y carguen sus productos.
+6. Avisar a los compradores que paguen con el **código de pago** desde su celular y que nunca digan su PIN en voz alta.
+7. Hacer una venta de prueba con código de pago y anularla.
+8. Durante el evento, tener una mesa de ayuda con un super administrador para resetear contraseñas y PIN, y un administrador revisando el *Panel* por si aparecen compras reportadas.
 
 ## Estructura
 

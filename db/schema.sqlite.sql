@@ -98,6 +98,17 @@ CREATE TABLE IF NOT EXISTS email_outbox (
   enviado TEXT
 );
 
+CREATE TABLE IF NOT EXISTS codigos_pago (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+  codigo_hash TEXT NOT NULL,
+  expira TEXT NOT NULL,
+  usado_en TEXT,
+  creado TEXT NOT NULL
+);
+-- Las columnas nuevas (categoria, idem, reporte...) las agrega db.js en bases existentes
+
+CREATE INDEX IF NOT EXISTS IX_codigos_usuario ON codigos_pago(usuario_id, usado_en);
 CREATE INDEX IF NOT EXISTS IX_ventas_emp ON ventas(emprendimiento_id, id);
 CREATE INDEX IF NOT EXISTS IX_ventas_comp ON ventas(comprador_id, id);
 CREATE INDEX IF NOT EXISTS IX_ventas_estado ON ventas(estado, estado_entrega);

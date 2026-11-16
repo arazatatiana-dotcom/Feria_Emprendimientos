@@ -10,13 +10,24 @@ const { fail, cents, money } = U;
 const nom = (a) => DB.get().dialect === 'sqlite' ? `(${a}.nombres || ' ' || ${a}.apellidos)` : `(${a}.nombres + ' ' + ${a}.apellidos)`;
 const like = (s) => `%${String(s || '').trim().replace(/[%_[\]]/g, '')}%`;
 
+// Categorías del catálogo (configurables en Ajustes)
+const categoriasDe = (cfg) => [...new Set(String(cfg.categorias || '').split(/[,\n]/).map(s => s.trim().slice(0, 60)).filter(Boolean))];
+function validarCategoria(cfg, valor) {
+  const v = String(valor || '').trim();
+  if (!v) return null;
+  const cats = categoriasDe(cfg);
+  const m = cats.find(c => c.localeCompare(v, 'es', { sensitivity: 'base' }) === 0);
+  if (!m) fail(`Categoría "${v}" no existe. Use una de: ${cats.join(', ')}`);
+  return m;
+}
+
 // ================= Autenticación =================
 async function auth(req) {
   const h = req.headers.authorization || '';
   const p = U.readToken(h.startsWith('Bearer ') ? h.slice(7) : '');
   if (!p) fail('Sesión expirada. Ingrese nuevamente.', 401);
   const u = await DB.get().get(`SELECT u.id, u.cedula, u.nombres, u.apellidos, u.email, u.rol, u.activo, u.es_comprador, u.debe_cambiar,
-      u.pass_hash, e.id AS emprendimiento_id, e.nombre_comercial
+      u.pass_hash, e.id AS emprendimiento_id, e.nombre_comercial, e.categoria
     FROM usuarios u LEFT JOIN emprendimientos e ON e.usuario_id = u.id WHERE u.id = @id`, { id: p.uid });
   if (!u || !u.activo) fail('Usuario inactivo', 401);
   // La sesión deja de valer si la contraseña se cambió o se reseteó después de emitir el token
@@ -51,13 +62,18 @@ router.get('/api/me', auth, async (req) => {
   const s = await db.get('SELECT saldo_asignado, saldo_usado, fecha_ingreso, pin_hash, pin_temporal FROM usuarios WHERE id = @id', { id: u.id });
   const cfg = await V.getConfig();
   const pendientes = await db.get(`SELECT COUNT(*) AS n FROM ventas WHERE comprador_id = @id AND estado = 'por_confirmar'`, { id: u.id });
+  // Última compra con saldo: la app avisa al comprador apenas se registra una (para detectar cobros que no hizo)
+  const ultima = await db.get(`SELECT MAX(id) AS id FROM ventas WHERE comprador_id = @id AND estado = 'confirmada' AND total_saldo > 0`, { id: u.id });
   return {
     id: u.id, cedula: u.cedula, nombres: u.nombres, apellidos: u.apellidos, email: u.email, rol: u.rol,
     es_comprador: !!u.es_comprador, debe_cambiar: !!u.debe_cambiar, tiene_pin: !!s.pin_hash, pin_temporal: !!s.pin_temporal,
-    emprendimiento: u.emprendimiento_id ? { id: u.emprendimiento_id, nombre_comercial: u.nombre_comercial } : null,
+    emprendimiento: u.emprendimiento_id ? { id: u.emprendimiento_id, nombre_comercial: u.nombre_comercial, categoria: u.categoria || null } : null,
     saldo: { asignado: Number(s.saldo_asignado), usado: Number(s.saldo_usado), disponible: money(cents(s.saldo_asignado) - cents(s.saldo_usado)) },
     por_confirmar: pendientes.n,
-    evento: { nombre: cfg.nombre_evento, fecha: cfg.fecha_evento, hora: cfg.hora_evento, minutos_confirmacion: Number(cfg.minutos_confirmacion) },
+    ultima_compra_saldo: ultima && ultima.id ? Number(ultima.id) : 0,
+    evento: { nombre: cfg.nombre_evento, fecha: cfg.fecha_evento, hora: cfg.hora_evento, minutos_confirmacion: Number(cfg.minutos_confirmacion),
+      pago_con_pin: cfg.pago_con_pin !== '0', minutos_codigo_pago: Number(cfg.minutos_codigo_pago) || 5 },
+    categorias: categoriasDe(cfg),
     correo_activo: mailer.enabled(),
   };
 });
@@ -86,16 +102,36 @@ router.post('/api/me/pin', auth, async (req) => {
 });
 
 // ================= Comprador =================
+// Catálogo agrupado: categoría → emprendimiento → productos.
+// El orden de los emprendimientos lo baraja la app por comprador, para que ninguno salga siempre primero.
 router.get('/api/catalogo', auth, async () => {
-  return DB.get().query(`SELECT p.id, p.nombre, p.descripcion, p.precio, p.stock, e.id AS emprendimiento_id, e.nombre_comercial
+  const cfg = await V.getConfig();
+  const rows = await DB.get().query(`SELECT p.id, p.nombre, p.descripcion, p.precio, p.stock, e.id AS emprendimiento_id, e.nombre_comercial, e.categoria
     FROM productos p JOIN emprendimientos e ON e.id = p.emprendimiento_id
-    WHERE p.activo = 1 AND e.activo = 1 ORDER BY e.nombre_comercial, p.nombre`);
+    WHERE p.activo = 1 AND e.activo = 1 ORDER BY e.id, p.nombre`);
+  const categorias = categoriasDe(cfg);
+  const emps = new Map();
+  for (const r of rows) {
+    if (!emps.has(r.emprendimiento_id)) {
+      const cat = categorias.includes(r.categoria) ? r.categoria : 'Otros';
+      emps.set(r.emprendimiento_id, { id: r.emprendimiento_id, nombre_comercial: r.nombre_comercial, categoria: cat, productos: [] });
+    }
+    emps.get(r.emprendimiento_id).productos.push({ id: r.id, nombre: r.nombre, descripcion: r.descripcion, precio: Number(r.precio), stock: r.stock });
+  }
+  const lista = [...emps.values()];
+  if (lista.some(e => e.categoria === 'Otros') && !categorias.includes('Otros')) categorias.push('Otros');
+  return { categorias, emprendimientos: lista };
+});
+
+router.post('/api/me/codigo-pago', auth, async (req) => {
+  if (!req.user.es_comprador) fail('Solo los compradores pueden generar un código de pago', 403);
+  return V.generarCodigoPago(req.user.id);
 });
 
 async function listaVentas(where, params, limit = 500) {
   const db = DB.get();
   const rows = await db.query(`SELECT v.id, v.total, v.total_saldo, v.estado, v.estado_entrega, v.fecha_limite_entrega, v.expira_confirmacion,
-      v.confirmada_por, v.motivo_anulacion, v.creado, v.actualizado, v.comprador_id, v.emprendimiento_id, e.nombre_comercial,
+      v.confirmada_por, v.motivo_anulacion, v.reporte, v.reporte_estado, v.creado, v.actualizado, v.comprador_id, v.emprendimiento_id, e.nombre_comercial,
       c.cedula AS comprador_cedula, ${nom('c')} AS comprador_nombre
     FROM ventas v JOIN emprendimientos e ON e.id = v.emprendimiento_id JOIN usuarios c ON c.id = v.comprador_id
     WHERE ${where} ORDER BY v.id DESC`, params);
@@ -119,6 +155,8 @@ router.post('/api/ventas/:id/rechazar', auth, async (req) => {
   if (!v || v.comprador_id !== req.user.id) fail('Venta no encontrada', 404);
   return V.anular(req.user, v.id, 'Rechazada por el comprador');
 });
+
+router.post('/api/ventas/:id/reportar', auth, async (req) => V.reportar(req.user, Number(req.params.id), req.body.motivo));
 
 router.get('/api/ventas/:id', auth, async (req) => {
   const db = DB.get();
@@ -155,6 +193,12 @@ router.put('/api/productos/:id', auth, emprendedor, async (req) => {
   const r = await DB.get().run(`UPDATE productos SET nombre=@nombre, descripcion=@descripcion, precio=@precio, stock=@stock, activo=@activo
     WHERE id=@id AND emprendimiento_id=@e`, { ...p, id: Number(req.params.id), e: req.user.emprendimiento_id });
   if (!r.changes) fail('Producto no encontrado', 404);
+});
+
+router.put('/api/mi-emprendimiento', auth, emprendedor, async (req) => {
+  const categoria = validarCategoria(await V.getConfig(), req.body.categoria);
+  await DB.get().run('UPDATE emprendimientos SET categoria=@c WHERE id=@id', { c: categoria, id: req.user.emprendimiento_id });
+  return { categoria };
 });
 
 router.get('/api/compradores', auth, emprendedor, async (req) => {
@@ -221,7 +265,9 @@ router.get('/api/admin/resumen', auth, ADMIN, async () => {
   porEmp.forEach(r => { r.total = money(cents(r.saldo) + cents(r.efectivo) + cents(r.transferencia)); });
   porEmp.sort((a, b) => b.total - a.total);
   const ultimas = await listaVentas('1=1', {}, 25);
-  return { totales: { ...tot, ...formas, estados: Object.fromEntries(estados.map(e => [e.estado, e.n])) }, saldos, por_emprendimiento: porEmp, ultimas, generado: new Date().toISOString() };
+  const rep = await db.get(`SELECT COUNT(*) AS n FROM ventas WHERE reporte_estado='pendiente'`);
+  return { totales: { ...tot, ...formas, estados: Object.fromEntries(estados.map(e => [e.estado, e.n])) }, saldos, por_emprendimiento: porEmp, ultimas,
+    reportes_pendientes: rep.n, generado: new Date().toISOString() };
 });
 
 router.get('/api/admin/ventas', auth, ADMIN, async (req) => {
@@ -229,9 +275,13 @@ router.get('/api/admin/ventas', auth, ADMIN, async (req) => {
   if (req.query.estado) { w.push('v.estado = @estado'); p.estado = req.query.estado; }
   if (req.query.entrega) { w.push('v.estado_entrega = @ent'); p.ent = req.query.entrega; }
   if (req.query.emprendimiento_id) { w.push('v.emprendimiento_id = @emp'); p.emp = Number(req.query.emprendimiento_id); }
+  if (req.query.reporte) { w.push('v.reporte_estado = @rep'); p.rep = String(req.query.reporte); }
   if (req.query.q) { w.push(`(c.cedula LIKE @q OR ${nom('c')} LIKE @q OR CAST(v.id AS VARCHAR(20)) = @qid)`); p.q = like(req.query.q); p.qid = String(req.query.q).trim(); }
   return listaVentas(w.join(' AND '), p, 400);
 });
+
+router.post('/api/admin/ventas/:id/reporte', auth, ADMIN, async (req) =>
+  V.resolverReporte(req.user, Number(req.params.id), req.body.accion, req.body.nota));
 
 router.get('/api/admin/emprendimientos', auth, ADMIN, async () =>
   DB.get().query('SELECT id, nombre_comercial FROM emprendimientos ORDER BY nombre_comercial'));
@@ -346,6 +396,7 @@ router.post('/api/super/importar/:tipo', auth, SUPER, async (req) => {
         if (tipo === 'emprendedores') {
           const comercial = String(pick(row, 'nombre_comercial', 'emprendimiento', 'negocio', 'marca')).trim();
           if (!comercial) fail('Falta el nombre comercial');
+          const categoria = validarCategoria(cfg, pick(row, 'categoria', 'rubro', 'tipo_de_negocio'));
           const clave = String(pick(row, 'contrasena', 'clave', 'password', 'contrasenia')).trim();
           // Sin contraseña en el Excel: se genera una temporal solo para usuarios nuevos
           const temp = clave || ex ? null : U.randomClave();
@@ -360,8 +411,8 @@ router.post('/api/super/importar/:tipo', auth, SUPER, async (req) => {
             res.creados++;
           }
           const em = await q.get('SELECT id FROM emprendimientos WHERE usuario_id = @u', { u: uid });
-          if (em) await q.run('UPDATE emprendimientos SET nombre_comercial=@n, activo=1 WHERE id=@id', { id: em.id, n: comercial.slice(0, 150) });
-          else await q.insert('emprendimientos', { usuario_id: uid, nombre_comercial: comercial.slice(0, 150), activo: 1 });
+          if (em) await q.run('UPDATE emprendimientos SET nombre_comercial=@n, categoria=COALESCE(@c, categoria), activo=1 WHERE id=@id', { id: em.id, n: comercial.slice(0, 150), c: categoria });
+          else await q.insert('emprendimientos', { usuario_id: uid, nombre_comercial: comercial.slice(0, 150), categoria, activo: 1 });
         } else {
           const fi = parseFecha(pick(row, 'fecha_de_ingreso', 'fecha_ingreso', 'ingreso', 'fecha'));
           if (fi === undefined) fail('Fecha de ingreso no reconocida (use dd/mm/aaaa)');
@@ -412,7 +463,7 @@ router.get('/api/super/usuarios', auth, SUPER, async (req) => {
   if (req.query.tipo === 'compradores') w.push('u.es_comprador = 1');
   const rows = await DB.get().query(`SELECT u.id, u.cedula, u.nombres, u.apellidos, u.email, u.rol, u.activo, u.es_comprador, u.fecha_ingreso,
       u.saldo_asignado, u.saldo_usado, u.debe_cambiar, CASE WHEN u.pin_hash IS NULL THEN 0 ELSE 1 END AS tiene_pin,
-      CASE WHEN u.clave_temporal IS NULL THEN 0 ELSE 1 END AS clave_pendiente, e.nombre_comercial
+      CASE WHEN u.clave_temporal IS NULL THEN 0 ELSE 1 END AS clave_pendiente, e.nombre_comercial, e.categoria
     FROM usuarios u LEFT JOIN emprendimientos e ON e.usuario_id = u.id WHERE ${w.join(' AND ')} ORDER BY u.apellidos, u.nombres`, p);
   return { total: rows.length, usuarios: rows.slice(0, 200) };
 });
@@ -440,13 +491,14 @@ router.put('/api/super/usuarios/:id', auth, SUPER, async (req) => {
   const saldo = money(cents(b.saldo_asignado || 0));
   if (cents(saldo) < cents(u.saldo_usado)) fail(`El saldo no puede ser menor a lo ya consumido (${u.saldo_usado})`);
   const fi = parseFecha(b.fecha_ingreso);
+  const categoria = validarCategoria(await V.getConfig(), b.categoria);
   await db.tx(async (q) => {
     await q.run(`UPDATE usuarios SET nombres=@n, apellidos=@a, email=@e, rol=@r, activo=@act, es_comprador=@ec, saldo_asignado=@s, fecha_ingreso=@f WHERE id=@id`,
       { id, n: String(b.nombres || '').trim(), a: String(b.apellidos || '').trim(), e: validEmail(b.email), r: b.rol, act: b.activo ? 1 : 0, ec: b.es_comprador ? 1 : 0, s: saldo, f: fi || null });
     const nc = String(b.nombre_comercial || '').trim();
     const em = await q.get('SELECT id FROM emprendimientos WHERE usuario_id=@u', { u: id });
-    if (nc && em) await q.run('UPDATE emprendimientos SET nombre_comercial=@n WHERE id=@id', { id: em.id, n: nc });
-    else if (nc && !em) await q.insert('emprendimientos', { usuario_id: id, nombre_comercial: nc, activo: 1 });
+    if (nc && em) await q.run('UPDATE emprendimientos SET nombre_comercial=@n, categoria=@c WHERE id=@id', { id: em.id, n: nc, c: categoria });
+    else if (nc && !em) await q.insert('emprendimientos', { usuario_id: id, nombre_comercial: nc, categoria, activo: 1 });
     if (em) await q.run('UPDATE emprendimientos SET activo=@a WHERE id=@id', { id: em.id, a: b.activo ? 1 : 0 });
   });
 });
@@ -501,6 +553,10 @@ router.put('/api/super/config', auth, SUPER, async (req) => {
     const val = String(v).trim();
     if (k === 'fecha_evento' && !/^\d{4}-\d{2}-\d{2}$/.test(val)) fail('Fecha del evento inválida');
     if (['saldo_base', 'saldo_antiguedad', 'dias_antiguedad', 'horas_entrega_cxc', 'minutos_confirmacion'].includes(k) && !(Number(val) >= 0)) fail(`Valor inválido: ${k}`);
+    if (k === 'categorias' && !categoriasDe({ categorias: val }).length) fail('Ingrese al menos una categoría');
+    if (k === 'categorias' && val.length > 500) fail('La lista de categorías es demasiado larga');
+    if (k === 'pago_con_pin' && !['0', '1'].includes(val)) fail('Valor inválido: pago_con_pin');
+    if (k === 'minutos_codigo_pago' && !(Number(val) >= 1 && Number(val) <= 30)) fail('El código de pago debe durar entre 1 y 30 minutos');
     await db.tx(async (q) => {
       await q.run('DELETE FROM config WHERE clave=@k', { k });
       await q.insert('config', { clave: k, valor: val });

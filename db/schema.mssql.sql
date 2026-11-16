@@ -115,6 +115,29 @@ CREATE TABLE dbo.email_outbox (
   enviado DATETIME2 NULL
 );
 
+-- Códigos de pago de un solo uso que el comprador genera en su celular (alternativa segura al PIN)
+IF OBJECT_ID('dbo.codigos_pago') IS NULL
+CREATE TABLE dbo.codigos_pago (
+  id INT IDENTITY(1,1) PRIMARY KEY,
+  usuario_id INT NOT NULL REFERENCES dbo.usuarios(id),
+  codigo_hash NVARCHAR(200) NOT NULL,
+  expira DATETIME2 NOT NULL,
+  usado_en DATETIME2 NULL,
+  creado DATETIME2 NOT NULL
+);
+
+-- Columnas agregadas después de la primera versión (se crean solas en bases existentes)
+IF COL_LENGTH('dbo.emprendimientos', 'categoria') IS NULL
+  ALTER TABLE dbo.emprendimientos ADD categoria NVARCHAR(60) NULL;
+IF COL_LENGTH('dbo.ventas', 'idem') IS NULL
+  ALTER TABLE dbo.ventas ADD idem NVARCHAR(64) NULL;
+IF COL_LENGTH('dbo.ventas', 'reporte') IS NULL
+  ALTER TABLE dbo.ventas ADD reporte NVARCHAR(300) NULL, reporte_estado NVARCHAR(20) NULL, reportada_en DATETIME2 NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_ventas_idem')
+  CREATE UNIQUE INDEX UX_ventas_idem ON dbo.ventas(vendedor_id, idem) WHERE idem IS NOT NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_codigos_usuario')
+  CREATE INDEX IX_codigos_usuario ON dbo.codigos_pago(usuario_id, usado_en);
+
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ventas_emp')
   CREATE INDEX IX_ventas_emp ON dbo.ventas(emprendimiento_id, id);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ventas_comp')

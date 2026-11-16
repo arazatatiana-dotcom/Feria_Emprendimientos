@@ -193,3 +193,26 @@ table.t tfoot td { font-weight: 700; border-top: 2px solid var(--ink); }
 .spinner { width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media print { .topbar, .nav, .btn { display: none !important; } main { padding: 0; } }
+
+/* Catálogo: categoría → emprendimiento → productos */
+.cat-tools { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 4px 0 10px; }
+.cat-tools .chip .n { opacity: .6; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.cat-h { display: flex; align-items: baseline; justify-content: space-between; margin: 20px 2px 8px; }
+.cat-h h2 { font-size: 17px; margin: 0; } .cat-h span { font-size: 12.5px; color: var(--muted); }
+.emp { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.emp + .emp { margin-top: 8px; }
+.emp > button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 16px; background: none; border: 0; text-align: left; cursor: pointer; color: inherit; font: inherit; }
+.emp > button .ini { width: 40px; height: 40px; border-radius: 12px; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; font-weight: 700; flex: 0 0 auto; }
+.emp > button .t { font-weight: 600; } .emp > button .s { font-size: 12.5px; color: var(--muted); }
+.emp > button .chev { margin-left: auto; transition: transform .15s; color: var(--muted); }
+.emp.open > button .chev { transform: rotate(90deg); }
+.emp .prods { border-top: 1px solid var(--line); }
+.emp .prods .item { cursor: default; }
+.emp .prods .item.out .t, .emp .prods .item.out .amt { color: var(--muted); }
+mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 1px; }
+
+/* Código de pago de un solo uso */
+.paycode { text-align: center; }
+.paycode .code { font-family: ui-monospace, Consolas, monospace; font-size: 40px; font-weight: 800; letter-spacing: 8px; margin: 8px 0 4px; color: var(--brand); }
+.paycode .bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin: 8px 0; }
+.paycode .bar > i { display: block; height: 100%; background: var(--brand-2); transition: width 1s linear; }

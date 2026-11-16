@@ -6,15 +6,18 @@
  * Los datos se guardan solo en este navegador (localStorage); no se comparten entre equipos
  * y no se envían correos. Sirve para mostrar el sistema, NO para el evento real.
  *
- * Se activa en *.github.io o agregando ?demo a la dirección. En el servidor real no hace nada.
+ * Se activa en *.github.io, o con ?demo solo en localhost. En el servidor real no hace nada.
  */
 'use strict';
 (function () {
   const params = new URLSearchParams(location.search);
-  const DEMO = location.hostname.endsWith('.github.io') || params.has('demo');
+  // ?demo solo se acepta en el equipo local, para que nadie pueda activarla en el servidor real
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  const DEMO = location.hostname.endsWith('.github.io') || (local && params.has('demo'));
   if (!DEMO) return;
 
-  const STORE_KEY = 'feria_demo_db_v1';
+  const STORE_KEY = 'feria_demo_db_v2'; // v2: 32 emprendimientos con categorías
+  try { localStorage.removeItem('feria_demo_db_v1'); } catch (_) { /* sin almacenamiento */ }
   const BASE = new URL('../../', document.currentScript.src).href; // raíz del repositorio (public/demo/ → ../../)
   const CDN = {
     sqljs: 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/',

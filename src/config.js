@@ -49,5 +49,10 @@ module.exports = {
     horas_entrega_cxc: '72',
     minutos_confirmacion: '15',
     nombre_evento: 'Feria de Emprendedores',
+    // Categorías del catálogo, en el orden en que se muestran (separadas por coma)
+    categorias: 'Comida, Postres y dulces, Bebidas, Artesanías, Ropa y accesorios, Belleza y cuidado personal, Hogar y decoración, Plantas, Otros',
+    // 1 = se acepta el PIN de 4 dígitos; 0 = solo código de pago del celular o aprobación en la app
+    pago_con_pin: '1',
+    minutos_codigo_pago: '5',
   },
 };

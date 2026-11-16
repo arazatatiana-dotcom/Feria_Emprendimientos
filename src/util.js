@@ -17,6 +17,7 @@ function verify(plain, stored) {
   return ref.length === calc.length && crypto.timingSafeEqual(ref, calc);
 }
 function randomPin() { return String(crypto.randomInt(0, 10000)).padStart(4, '0'); }
+function randomCodigo() { return String(crypto.randomInt(0, 1000000)).padStart(6, '0'); }
 function randomClave() {
   const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
   let s = '';
@@ -75,4 +76,4 @@ function daysBetween(fromYmd, toYmd) {
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-module.exports = { hash, verify, randomPin, randomClave, signToken, readToken, passVersion, cents, money, fmt, AppError, fail, normCedula, addHours, addMinutes, daysBetween, esc };
+module.exports = { hash, verify, randomPin, randomCodigo, randomClave, signToken, readToken, passVersion, cents, money, fmt, AppError, fail, normCedula, addHours, addMinutes, daysBetween, esc };
