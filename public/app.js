@@ -144,11 +144,23 @@
     if (t.length < 5) t.push(['cuenta', 'Mi cuenta', 'user']);
     return t;
   }
+  // Roles de la persona que inició sesión (puede tener varios: p. ej. emprendedor y comprador)
+  function rolesDe(me) {
+    const r = [];
+    if (me.rol === 'superadmin') r.push(['super', 'Super admin']);
+    if (me.rol === 'admin') r.push(['admin', 'Administrador']);
+    if (me.emprendimiento) r.push(['emp', 'Emprendedor']);
+    if (me.es_comprador) r.push(['comp', 'Comprador']);
+    return r;
+  }
+  const roleTags = (me) => rolesDe(me).map(([k, l]) => `<span class="role-tag r-${k}">${l}</span>`).join('');
   function renderShell() {
     const me = S.me;
-    const sub = me.emprendimiento ? me.emprendimiento.nombre_comercial : ({ superadmin: 'Super administrador', admin: 'Administrador' }[me.rol] || `${me.nombres} ${me.apellidos}`);
-    $('#app').innerHTML = `<header class="topbar"><div><div class="title">${esc(me.evento.nombre)}</div><div class="sub">${esc(sub)}</div></div>
-      <button class="avatar" id="b-me" title="Mi cuenta">${esc(initials(me.nombres + ' ' + me.apellidos))}</button></header>
+    const nombre = `${me.nombres} ${me.apellidos}`.trim();
+    const sub = me.emprendimiento ? `${nombre} · ${me.emprendimiento.nombre_comercial}` : nombre;
+    $('#app').innerHTML = `<header class="topbar"><div class="grow" style="min-width:0"><div class="title">${esc(me.evento.nombre)}</div>
+        <div class="who"><span class="sub">${esc(sub)}</span>${roleTags(me)}</div></div>
+      <button class="avatar" id="b-me" title="Mi cuenta · ${esc(rolesDe(me).map(r => r[1]).join(', '))}">${esc(initials(nombre))}</button></header>
       <div class="shell"><nav class="nav" id="nav"></nav><main id="main"></main></div>`;
     $('#b-me').onclick = () => go('cuenta');
     renderNav();
@@ -719,7 +731,8 @@
   VIEWS.cuenta = async (main) => {
     const me = S.me;
     main.innerHTML = `<div class="card"><div class="row"><div class="buyer" style="background:none;padding:0"><div class="ini">${esc(initials(me.nombres + ' ' + me.apellidos))}</div></div>
-        <div><div style="font-weight:700">${esc(me.nombres)} ${esc(me.apellidos)}</div><div class="small muted">${esc(me.cedula)}${me.email ? ' · ' + esc(me.email) : ''}</div></div></div></div>
+        <div><div style="font-weight:700">${esc(me.nombres)} ${esc(me.apellidos)}</div><div class="small muted">${esc(me.cedula)}${me.email ? ' · ' + esc(me.email) : ''}</div>
+        <div class="row wrap" style="gap:6px;margin-top:6px">${roleTags(me)}</div></div></div></div>
       <div class="card"><h3 style="margin-bottom:12px">Cambiar contraseña</h3><form class="stack" id="fc">
         <label class="field"><span>Contraseña actual</span><input class="input" type="password" name="actual" required autocomplete="current-password"></label>
         <label class="field"><span>Nueva contraseña</span><input class="input" type="password" name="nueva" minlength="6" required autocomplete="new-password"></label>

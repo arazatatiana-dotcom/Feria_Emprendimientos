@@ -307,7 +307,7 @@
   }
   showBanner(`<strong>Demostración</strong>: los datos se guardan solo en este navegador y no se envían correos.
     Usuarios (clave <code>demo123</code>, PIN <code>2580</code>): super admin <code>0000000000</code> ·
-    emprendedora <code>0102030405</code> · comprador <code>1700000000</code>.
+    admin <code>1111111111</code> · emprendedora <code>0102030405</code> · comprador <code>1700000000</code>.
     <button id="demo-reset" style="margin-left:6px;cursor:pointer">Reiniciar demo</button>
     <button id="demo-hide" aria-label="Ocultar aviso" style="margin-left:4px;cursor:pointer">×</button>`);
 })();
