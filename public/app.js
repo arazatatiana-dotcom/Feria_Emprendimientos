@@ -26,7 +26,28 @@
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     check: '<path d="m5 12 5 5L20 7"/>',
+    wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"/><circle cx="16" cy="14.5" r="1.2"/>',
+    cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v4M18 10v4"/>',
+    phone: '<rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/>',
+    shield: '<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><path d="M12 17h.01"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    alert: '<path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/>',
+    truck: '<path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>',
+    eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    eyeOff: '<path d="m3 3 18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.9 8.3 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    wifiOff: '<path d="m2 2 20 20M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8M19 13a10 10 0 0 0-2.4-1.7M2 8.8a15 15 0 0 1 4.4-2.6M22 8.8A15 15 0 0 0 12 5c-.7 0-1.4 0-2 .1M12 20h.01"/>',
+    keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+    bag: '<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   };
+  // Forma de pago → icono, y categoría → emoji (para reconocerlas de un vistazo)
+  const FORMA_IC = { saldo: 'wallet', efectivo: 'cash', transferencia: 'phone' };
+  const CAT_EMOJI = [[/comida|almuerzo|snack|plato/i, '🍲'], [/postre|dulce|reposter|pan/i, '🧁'], [/bebida|jugo|caf[eé]|t[eé]\b/i, '🥤'],
+    [/artesan/i, '🧶'], [/ropa|accesorio|moda|bisuter/i, '👕'], [/belleza|cuidado|cosm/i, '🧴'], [/hogar|deco/i, '🏠'],
+    [/planta|jard|flor/i, '🌱'], [/libro|papeler/i, '📚'], [/tecno|electr/i, '💻'], [/mascota/i, '🐾'], [/juguet|niñ/i, '🧸']];
+  const catEmoji = (c) => (CAT_EMOJI.find(([r]) => r.test(c || '')) || [null, '🛍️'])[1];
   const icon = (n, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
 
   function toast(msg, err) {
@@ -93,16 +114,42 @@
   function logout() { S.token = null; S.me = null; localStorage.removeItem('feria_token'); closeModal(); renderLogin(); }
   async function loadMe() { S.me = await api('GET', '/api/me'); return S.me; }
 
+  // Campo de contraseña con botón para mostrarla (en el celular es fácil equivocarse al escribir)
+  const pwField = (name, ac, min) => `<div class="pw"><input class="input" name="${name}" type="password" autocomplete="${ac}" ${min ? `minlength="${min}"` : ''} required>
+    <button type="button" class="pw-eye" aria-label="Mostrar contraseña" title="Mostrar contraseña">${icon('eye', 20)}</button></div>`;
+  function bindPwToggles(root) {
+    root.querySelectorAll('.pw-eye').forEach(b => { b.onclick = () => {
+      const inp = b.previousElementSibling, ver = inp.type === 'password';
+      inp.type = ver ? 'text' : 'password';
+      b.innerHTML = icon(ver ? 'eyeOff' : 'eye', 20);
+      b.setAttribute('aria-label', ver ? 'Ocultar contraseña' : 'Mostrar contraseña');
+    }; });
+  }
+
+  // Aviso fijo cuando el equipo pierde el Wi-Fi: la gente sabe por qué no funciona y que no perdió nada
+  function netBar() {
+    let b = $('#net');
+    if (navigator.onLine) { if (b) b.remove(); return; }
+    if (!b) {
+      b = document.createElement('div'); b.id = 'net'; b.className = 'net-bar'; b.setAttribute('role', 'status');
+      b.innerHTML = `${icon('wifiOff', 18)}<span>Sin conexión. No se perdió nada: espera a que vuelva el Wi-Fi y vuelve a intentar.</span>`;
+      document.body.appendChild(b);
+    }
+  }
+  window.addEventListener('offline', netBar);
+  window.addEventListener('online', () => { netBar(); toast('Conexión restablecida'); });
+
   function renderLogin() {
     document.title = 'Ingresar · Feria de Emprendedores';
     $('#app').innerHTML = `<div class="login"><form class="card stack" id="f-login" autocomplete="on">
       <img src="icon.svg" class="logo" alt="">
       <div><h1>Feria de Emprendedores</h1><p class="muted small" style="margin:4px 0 0">Ingresa con tu cédula y contraseña</p></div>
-      <label class="field"><span>Cédula</span><input class="input" name="cedula" inputmode="numeric" autocomplete="username" required></label>
-      <label class="field"><span>Contraseña</span><input class="input" name="clave" type="password" autocomplete="current-password" required></label>
+      <label class="field"><span>Cédula</span><div class="input-ic">${icon('user', 18)}<input class="input" name="cedula" inputmode="numeric" autocomplete="username" placeholder="Tu número de cédula" required></div></label>
+      <label class="field"><span>Contraseña</span>${pwField('clave', 'current-password')}</label>
       <button class="btn primary block lg" type="submit">Ingresar</button>
-      <p class="tiny muted center" style="margin:6px 0 0">¿Olvidaste tu contraseña? Acércate a la mesa de ayuda del evento.</p>
+      <p class="tiny muted center" style="margin:6px 0 0">¿Olvidaste tu contraseña? Acércate a la <strong>mesa de ayuda</strong> del evento.<br>Es la misma cédula con la que te registraron.</p>
     </form></div>`;
+    bindPwToggles($('#f-login'));
     $('#f-login').onsubmit = (e) => {
       e.preventDefault();
       const f = e.target;
@@ -117,12 +164,14 @@
   function renderForceChange() {
     $('#app').innerHTML = `<div class="login"><form class="card stack" id="f-pw">
       <div><h2>Crea tu contraseña</h2><p class="muted small" style="margin:6px 0 0">Hola ${esc(S.me.nombres)}. Por seguridad, cambia la contraseña temporal antes de continuar.</p></div>
-      <label class="field"><span>Contraseña actual (temporal)</span><input class="input" name="actual" type="password" required autocomplete="current-password"></label>
-      <label class="field"><span>Nueva contraseña (mínimo 6 caracteres)</span><input class="input" name="nueva" type="password" minlength="6" required autocomplete="new-password"></label>
-      <label class="field"><span>Repite la nueva contraseña</span><input class="input" name="rep" type="password" minlength="6" required autocomplete="new-password"></label>
+      <label class="field"><span>Contraseña actual (la temporal que recibiste)</span>${pwField('actual', 'current-password')}</label>
+      <label class="field"><span>Nueva contraseña (mínimo 6 caracteres)</span>${pwField('nueva', 'new-password', 6)}</label>
+      <label class="field"><span>Repite la nueva contraseña</span>${pwField('rep', 'new-password', 6)}</label>
+      <p class="tiny muted" style="margin:0">Elige una que recuerdes y que no uses en otros lugares.</p>
       <button class="btn primary block lg">Guardar y continuar</button>
       <button class="btn ghost block" type="button" id="b-out">Salir</button></form></div>`;
     $('#b-out').onclick = logout;
+    bindPwToggles($('#f-pw'));
     $('#f-pw').onsubmit = (e) => {
       e.preventDefault(); const f = e.target;
       if (f.nueva.value !== f.rep.value) return toast('Las contraseñas no coinciden', true);
@@ -157,13 +206,21 @@
   function renderShell() {
     const me = S.me;
     const nombre = `${me.nombres} ${me.apellidos}`.trim();
+    document.title = me.evento.nombre;
     const sub = me.emprendimiento ? `${nombre} · ${me.emprendimiento.nombre_comercial}` : nombre;
     $('#app').innerHTML = `<header class="topbar"><div class="grow" style="min-width:0"><div class="title">${esc(me.evento.nombre)}</div>
         <div class="who"><span class="sub">${esc(sub)}</span>${roleTags(me)}</div></div>
+      <button class="avatar help-btn" id="b-help" title="¿Cómo funciona?" aria-label="Ayuda: cómo funciona">${icon('help', 22)}</button>
       <button class="avatar" id="b-me" title="Mi cuenta · ${esc(rolesDe(me).map(r => r[1]).join(', '))}">${esc(initials(nombre))}</button></header>
       <div class="shell"><nav class="nav" id="nav"></nav><main id="main"></main></div>`;
     $('#b-me').onclick = () => go('cuenta');
+    $('#b-help').onclick = showHelp;
     renderNav();
+    // La primera vez que alguien entra, se le muestra la ayuda de su rol (una sola vez por equipo)
+    try {
+      const k = 'feria_ayuda_' + rolesDe(me).map(r => r[0]).join('_');
+      if (!localStorage.getItem(k)) { localStorage.setItem(k, '1'); setTimeout(showHelp, 400); }
+    } catch (_) { /* sin almacenamiento: no pasa nada */ }
   }
   function renderNav() {
     $('#nav').innerHTML = tabs().map(([k, l, ic]) => `<button data-tab="${k}" class="${S.tab === k ? 'on' : ''}">${icon(ic)}<span>${l}</span>${k === 'inicio' && S.me.por_confirmar ? `<span class="badge b-dot">${S.me.por_confirmar}</span>` : ''}</button>`).join('');
@@ -203,6 +260,73 @@
     } catch (_) { /* sin conexión momentánea */ }
   }, 15000);
 
+  // ================= Ayuda "¿Cómo funciona?" según el rol =================
+  // Pasos simples y los problemas que más pueden pasar en la feria, con qué hacer en cada caso.
+  function showHelp() {
+    const me = S.me, roles = rolesDe(me).map(r => r[0]);
+    const pasos = (titulo, emoji, lista) => `<div class="help-sec"><h3>${emoji} ${titulo}</h3><ol class="how">${lista.map((t, i) => `<li><span>${i + 1}</span><div>${t}</div></li>`).join('')}</ol></div>`;
+    const faq = (lista) => `<div class="help-sec"><h3>🛟 Si algo pasa</h3>${lista.map(([q, a]) => `<details class="faq"><summary>${q}</summary><div>${a}</div></details>`).join('')}</div>`;
+    const secs = [];
+    const comunes = [];
+    if (roles.includes('comp')) {
+      secs.push(pasos('Comprar con tu saldo', '🛍️', [
+        'Mira el <strong>Catálogo</strong> para ver qué vende cada emprendimiento. Puedes buscar o filtrar por categoría.',
+        'En el puesto, dile al vendedor qué vas a llevar.',
+        'Cuando vayas a pagar, ve a <strong>Inicio</strong> y toca <strong>Generar código</strong>.',
+        '<strong>Escribe tú mismo</strong> el código en el equipo del vendedor. No lo digas en voz alta ni lo muestres a otros.',
+        'Te aparece el aviso <em>"¿Fuiste tú?"</em> y te llega el comprobante al correo.',
+      ]));
+      comunes.push(
+        ['⏰ El código venció', 'No pasa nada: toca <strong>Generar otro código</strong>. Cada código dura pocos minutos y solo sirve una vez.'],
+        ['💸 No me alcanza el saldo', 'Paga una parte con saldo y el resto en efectivo o transferencia. El vendedor puede combinar las formas de pago.'],
+        ['🚨 Me cobraron algo que no compré', 'Abre la compra en <strong>Inicio → Mis compras</strong> y toca <strong>No reconozco esta compra</strong>. Un administrador la revisa y, si corresponde, te devuelve el saldo. Si usas PIN, cámbialo en <strong>Mi cuenta</strong>.'],
+        ['⏳ Me llegó una compra "por confirmar"', 'Aparece arriba en <strong>Inicio</strong>. Si es tuya, toca <strong>Sí, confirmar</strong>. Si no la haces a tiempo, se anula sola y no se te cobra.'],
+      );
+    }
+    if (roles.includes('emp')) {
+      secs.push(pasos('Vender', '🧾', [
+        'En <strong>Productos</strong>, elige tu categoría y agrega lo que vendes con su precio y cuántos tienes.',
+        'En <strong>Vender</strong>, busca al comprador por cédula, nombre o apellido.',
+        'Toca <strong>+</strong> en cada producto que lleva.',
+        'Elige cómo paga. Si usa <strong>saldo</strong>, gira el equipo y pídele que <strong>escriba él</strong> su código de pago.',
+        'Toca <strong>Registrar venta</strong>. El comprobante le llega al comprador.',
+      ]));
+      comunes.push(
+        ['📡 Se cortó el Wi-Fi al registrar', 'Espera a que vuelva la señal y toca <strong>Registrar venta</strong> otra vez. <strong>La venta no se duplica</strong>: si ya se había guardado, verás la misma.'],
+        ['🔢 "Código incorrecto, vencido o ya usado"', 'Pídele al comprador que genere un código nuevo en su celular y lo escriba otra vez. Tras 5 intentos fallidos se bloquea 10 minutos.'],
+        ['📦 Se acabó el stock', 'Marca <strong>Entrega posterior</strong> en el producto: se vende igual y lo entregas después. Luego, en <strong>Ventas</strong>, márcalo como entregado.'],
+        ['✏️ Me equivoqué en una venta', 'Ve a <strong>Ventas</strong>, ábrela y toca <strong>Modificar</strong> o <strong>Anular</strong> (con el motivo). Todo queda registrado.'],
+        ['📵 El comprador no tiene celular', 'Puede pagar en efectivo o transferencia. Para usar saldo, que pase por la mesa de ayuda.'],
+      );
+    }
+    if (roles.includes('admin') || roles.includes('super')) {
+      secs.push(pasos('Administrar', '📊', [
+        '<strong>Panel</strong>: ventas en vivo, se actualiza cada 15 segundos. Si aparece un aviso rojo de compras reportadas, revísalo primero.',
+        '<strong>Ventas</strong>: busca y filtra todas las transacciones. El filtro <strong>Reportadas</strong> muestra las compras que un comprador no reconoce.',
+        'En una compra reportada, habla con el emprendedor y decide: <strong>Anular por reporte</strong> (devuelve el saldo) o <strong>Descartar</strong>.',
+        '<strong>Reportes</strong>: cuentas por cobrar por empleado y liquidación a emprendedores, para descargar en Excel.',
+      ]));
+      if (roles.includes('super')) {
+        secs.push(pasos('Super administrador', '🛠️', [
+          '<strong>Ajustes</strong>: importa los Excel de emprendedores y compradores, envía los accesos y define las categorías.',
+          'En Ajustes puedes <strong>desactivar el PIN</strong> para que solo se pague con código del celular o aprobación en la app.',
+          '<strong>Usuarios</strong>: busca a cualquier persona para cambiar su rol, saldo o generarle una nueva contraseña o PIN.',
+        ]));
+      }
+      comunes.push(
+        ['🔑 Alguien olvidó su contraseña', 'Super admin: <strong>Usuarios</strong> → busca a la persona → <strong>Nueva contraseña</strong>. Entrégasela; al entrar deberá cambiarla.'],
+        ['🚨 Un comprador reporta una compra', 'Ábrela desde el aviso del Panel. Confirma con el emprendedor si entregó el producto antes de anular.'],
+      );
+    }
+    comunes.push(['📶 La app dice "Sin conexión"', 'Es el Wi-Fi del lugar. Tus datos no se pierden: espera unos segundos y vuelve a intentar.']);
+    const b = modal('¿Cómo funciona?', `<div class="stack">
+      <div class="row wrap" style="gap:6px">${roleTags(me)}</div>
+      ${secs.join('')}${faq(comunes)}
+      <div class="alert info small">${icon('shield', 16)} <strong>Seguridad:</strong> nunca compartas tu contraseña ni tu PIN. El personal de la feria nunca te los va a pedir.</div>
+      <button class="btn primary block lg" id="h-ok">Entendido</button></div>`, { wide: true });
+    $('#h-ok', b).onclick = closeModal;
+  }
+
   // Aviso inmediato al comprador cada vez que se cobra algo con su saldo: si no fue él, lo reporta en el momento
   async function avisoCompra(id) {
     S.payCode = null;
@@ -218,6 +342,9 @@
   }
 
   // ================= Elementos comunes =================
+  // Estado vacío con icono, título y una indicación de qué hacer
+  const emptyState = (ic, titulo, texto, extra = '') => `<div class="empty-state"><div class="ic">${icon(ic, 30)}</div>
+    <div class="t">${titulo}</div>${texto ? `<div class="s">${texto}</div>` : ''}${extra}</div>`;
   function estadoBadges(v) {
     const b = [];
     if (v.estado === 'anulada') b.push('<span class="badge b-bad">Anulada</span>');
@@ -269,7 +396,7 @@
       <div class="card flat"><div class="spread"><div><div class="muted tiny">Emprendimiento</div><strong>${esc(v.nombre_comercial)}</strong></div><div class="right"><div class="muted tiny">Comprador</div><strong>${esc(v.comprador_nombre)}</strong><div class="tiny muted">${esc(v.comprador_cedula)}</div></div></div></div>
       <div class="card flat"><table class="lines">${v.detalle.map(d => `<tr><td>${d.cantidad} × ${esc(d.descripcion)}${d.entrega_posterior ? ' <span class="badge b-info">posterior</span>' : ''}<div class="tiny muted">${fmt(d.precio_unit)} c/u</div></td><td class="right num">${fmt(d.subtotal)}</td></tr>`).join('')}
         <tr class="tot"><td>Total</td><td class="right num">${fmt(v.total)}</td></tr>
-        ${v.pagos.map(p => `<tr><td class="muted">${FORMA[p.forma]}${p.forma === 'saldo' ? ' <span class="tiny">(cuenta por cobrar)</span>' : ''}</td><td class="right num muted">${fmt(p.monto)}</td></tr>`).join('')}</table></div>
+        ${v.pagos.map(p => `<tr><td class="muted"><span class="pay-ic sm f-${p.forma}">${icon(FORMA_IC[p.forma], 14)}</span> ${FORMA[p.forma]}${p.forma === 'saldo' ? ' <span class="tiny">(cuenta por cobrar)</span>' : ''}</td><td class="right num muted">${fmt(p.monto)}</td></tr>`).join('')}</table></div>
       ${acc.length ? `<div class="btns">${acc.join('')}</div>` : ''}
       <div><h3 style="margin-bottom:10px">Historial</h3><ul class="timeline">${(v.historial || []).map(h => `<li><strong>${ACC[h.accion] || h.accion}</strong> · ${fdate(h.fecha)}${h.usuario ? ` · ${esc(h.usuario)}` : ''}
         ${h.detalle && h.detalle.motivo ? `<div class="muted">Motivo: ${esc(h.detalle.motivo)}</div>` : ''}
@@ -375,16 +502,16 @@
     main.innerHTML = `
       ${s.editId ? `<div class="alert info spread" style="margin-bottom:12px"><span>Modificando la venta <strong>N.º ${s.editId}</strong></span><button class="btn sm" id="b-cancel-edit">Cancelar</button></div>` : ''}
       <div class="card">
-        <div class="steps-h"><span class="n">1</span>Comprador</div>
+        <div class="steps-h"><span class="n">1</span>¿Quién compra?</div>
         ${c ? `<div class="buyer"><div class="ini">${esc(initials(c.nombre))}</div><div class="grow"><div style="font-weight:600">${esc(c.nombre)}</div><div class="small muted">${esc(c.cedula)}</div></div>
           <div class="right"><div class="tiny muted">Saldo disponible</div><div style="font-weight:700;font-size:18px" class="num">${fmt(m2(c2(c.saldo_disponible) + c2(c.saldo_previo || 0)))}</div></div></div>
           ${s.editId ? '' : '<button class="btn sm ghost" id="b-chg" style="margin-top:6px">Cambiar comprador</button>'}`
-        : `<input class="input" id="q-comp" placeholder="Cédula, nombre o apellido" autocomplete="off" inputmode="search"><div id="r-comp" style="margin-top:8px"></div>`}
+        : `<div class="input-ic">${icon('search', 18)}<input class="input" id="q-comp" placeholder="Escribe la cédula, nombre o apellido" autocomplete="off" inputmode="search"></div><div id="r-comp" style="margin-top:8px"></div>`}
       </div>
       <div class="card">
-        <div class="steps-h"><span class="n">2</span>Productos</div>
+        <div class="steps-h"><span class="n">2</span>¿Qué lleva?</div>
         ${prods.length > 8 ? '<input class="input" id="q-prod" placeholder="Buscar producto" style="margin-bottom:8px">' : ''}
-        ${!prods.length ? '<div class="empty">Aún no tienes productos. <a href="#productos" id="go-prod">Agrégalos aquí</a>.</div>' : ''}
+        ${!prods.length ? emptyState('box', 'Aún no tienes productos', 'Primero agrega lo que vas a vender, con su precio y cuántos tienes.', '<a class="btn primary" href="#productos" id="go-prod" style="margin-top:10px">+ Agregar productos</a>') : ''}
         <div id="prod-list">${prods.map(p => {
           const l = s.cart[p.id]; const a = avail(p);
           return `<div class="prod" data-name="${esc(p.nombre.toLowerCase())}"><div><div class="n">${esc(p.nombre)}</div><div class="p">${fmt(p.precio)} · ${a > 0 ? `${a} disponibles` : '<span style="color:var(--warn)">sin stock hoy</span>'}</div></div>
@@ -393,10 +520,11 @@
         }).join('')}</div>
       </div>
       <div class="card" id="pay-card">
-        <div class="steps-h"><span class="n">3</span>Forma de pago</div>
-        ${['saldo', 'efectivo', 'transferencia'].map(f => `<div class="pay"><label for="p-${f}">${FORMA[f]}${f === 'saldo' ? ' <span class="tiny muted">(cuenta por cobrar)</span>' : ''}</label>
+        <div class="steps-h"><span class="n">3</span>¿Cómo paga?</div>
+        ${['saldo', 'efectivo', 'transferencia'].map(f => `<div class="pay"><label for="p-${f}"><span class="pay-ic f-${f}">${icon(FORMA_IC[f], 18)}</span><span>${FORMA[f]}${f === 'saldo' ? '<span class="tiny muted" style="display:block;font-weight:400">cuenta por cobrar</span>' : ''}</span></label>
           <input class="input money" id="p-${f}" data-pay="${f}" inputmode="decimal" placeholder="0.00" value="${esc(s.pagos[f])}" ${f === 'saldo' && (!c || !c.saldo_disponible && !c.saldo_previo) ? 'disabled' : ''}></div>`).join('')}
-        <div class="btns" style="margin:6px 0 4px"><button class="btn sm" data-fill="saldo">Todo saldo</button><button class="btn sm" data-fill="efectivo">Todo efectivo</button><button class="btn sm" data-fill="transferencia">Todo transferencia</button></div>
+        <div class="tiny muted" style="margin:2px 0 6px">Puedes combinar: por ejemplo, parte con saldo y el resto en efectivo.</div>
+        <div class="btns" style="margin:6px 0 4px">${['saldo', 'efectivo', 'transferencia'].map(f => `<button class="btn sm" data-fill="${f}">${icon(FORMA_IC[f], 16)} Todo ${FORMA[f].toLowerCase()}</button>`).join('')}</div>
         <div class="spread" style="margin-top:8px"><span class="muted">Falta por asignar</span><span class="remain" id="remain"></span></div>
         <div id="auth-box"></div>
         ${s.editId ? `<label class="field" style="margin-top:10px"><span>Motivo de la modificación</span><input class="input" id="motivo" value="${esc(s.motivo)}" placeholder="Opcional"></label>` : ''}
@@ -409,11 +537,11 @@
     if (q) {
       const search = debounce(async () => {
         const v = q.value.trim(), box = $('#r-comp');
-        if (v.length < 3) { box.innerHTML = '<div class="tiny muted">Escribe al menos 3 caracteres</div>'; return; }
+        if (v.length < 3) { box.innerHTML = '<div class="tiny muted">Escribe al menos 3 letras o números para buscar</div>'; return; }
         try {
           const rs = await api('GET', '/api/compradores?q=' + encodeURIComponent(v));
           if (q.value.trim() !== v) return;
-          box.innerHTML = rs.length ? `<div class="list">${rs.map((r, i) => `<button class="item" data-i="${i}"><div class="grow"><div class="t">${esc(r.nombre)}</div><div class="s">${esc(r.cedula)}</div></div><div class="amt">${fmt(r.saldo_disponible)}</div></button>`).join('')}</div>` : '<div class="muted small">Sin resultados</div>';
+          box.innerHTML = rs.length ? `<div class="list">${rs.map((r, i) => `<button class="item" data-i="${i}"><div class="grow"><div class="t">${esc(r.nombre)}</div><div class="s">${esc(r.cedula)}</div></div><div class="amt">${fmt(r.saldo_disponible)}</div></button>`).join('')}</div>` : '<div class="alert warn small">No encontramos a nadie con eso. Revisa la cédula o prueba con el apellido. Si no está registrado, puede pagar igual en efectivo o transferencia desde la mesa de ayuda.</div>';
           box.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { s.comprador = rs[Number(b.dataset.i)]; s.touched = false; renderVender(main); }; });
         } catch (e) { toast(e.message, true); }
       });
@@ -536,7 +664,8 @@
     const paint = () => {
       const t = $('#vq').value.trim().toLowerCase();
       const rows = r.ventas.filter(filt[f]).filter(v => !t || String(v.id) === t || v.comprador_nombre.toLowerCase().includes(t) || v.comprador_cedula.includes(t));
-      $('#vl').innerHTML = rows.length ? rows.map(v => ventaItem(v, 'vendedor')).join('') : '<div class="empty">No hay ventas</div>';
+      $('#vl').innerHTML = rows.length ? rows.map(v => ventaItem(v, 'vendedor')).join('')
+        : emptyState('receipt', t || f !== 'todas' ? 'No hay ventas con ese filtro' : 'Aún no tienes ventas', t || f !== 'todas' ? 'Prueba con "Todas" o borra la búsqueda.' : 'Cuando registres una venta en la pestaña Vender, aparecerá aquí.');
       bindVentaItems($('#vl'), () => go('ventas'));
     };
     $('#vq').oninput = paint;
@@ -555,7 +684,7 @@
       <div class="section-title"><h2>Mis productos</h2><button class="btn primary sm" id="b-add">+ Agregar</button></div>
       <div class="list">${prods.length ? prods.map(p => `<button class="item" data-p="${p.id}"><div class="grow"><div class="t">${esc(p.nombre)} ${p.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</div>
         <div class="s">${p.descripcion ? esc(p.descripcion) : ''}</div></div><div class="right"><div class="amt">${fmt(p.precio)}</div>
-        <div class="tiny"><span class="badge ${p.stock > 0 ? 'b-ok' : 'b-warn'}">Stock ${p.stock}</span></div></div></button>`).join('') : '<div class="empty">Agrega los productos que venderás en la feria.</div>'}</div>
+        <div class="tiny"><span class="badge ${p.stock > 0 ? 'b-ok' : 'b-warn'}">Stock ${p.stock}</span></div></div></button>`).join('') : emptyState('box', 'Agrega lo que vas a vender', 'Toca "+ Agregar" e ingresa nombre, precio y cuántos tienes. Puedes cambiarlo cuando quieras.')}</div>
       <p class="tiny muted" style="margin-top:12px">El stock es lo disponible el día del evento. Los pedidos con entrega posterior no lo descuentan.</p>`;
     $('#mi-cat').onchange = async (e) => {
       try { await api('PUT', '/api/mi-emprendimiento', { categoria: e.target.value }); await loadMe(); toast('Categoría guardada'); go('productos'); }
@@ -588,22 +717,36 @@
     const compras = await api('GET', '/api/mis-compras');
     const s = S.me.saldo;
     const pend = compras.filter(v => v.estado === 'por_confirmar');
-    main.innerHTML = `<div class="balance"><div class="lbl">Saldo disponible para compras</div><div class="big">${fmt(s.disponible)}</div>
-        <div class="meta"><span>Asignado ${fmt(s.asignado)}</span><span>Usado ${fmt(s.usado)}</span></div></div>
-      ${s.disponible > 0 ? `<div class="card paycode" style="margin-top:12px" id="paycode">
-        <div style="font-weight:700">Pagar con mi saldo</div>
-        <p class="small muted" style="margin:4px 0 10px">Genera un código y escríbelo tú mismo en el equipo del vendedor. Sirve <strong>una sola vez</strong> y vence en ${S.me.evento.minutos_codigo_pago} minutos: aunque alguien lo vea, después no le sirve.</p>
-        <div id="pc-box"></div>
-        <button class="btn primary block lg" id="b-code">Generar código de pago</button></div>` : ''}
-      ${S.me.pin_temporal && S.me.evento.pago_con_pin ? '<div class="alert warn" style="margin-top:12px">Te recomendamos cambiar el PIN que recibiste por correo. <a href="#cuenta" id="go-c">Cambiar PIN</a></div>' : ''}
-      ${pend.length ? `<div class="section-title"><h2>Por confirmar</h2></div>${pend.map(v => `<div class="card" style="border:2px solid var(--accent)">
-          <div class="spread"><div><strong>${esc(v.nombre_comercial)}</strong><div class="small muted">N.º ${v.id} · ${ftime(v.creado)} · vence ${ftime(v.expira_confirmacion)}</div></div><div style="font-size:20px;font-weight:700" class="num">${fmt(v.total)}</div></div>
+    // Orden pensado para la feria: primero lo urgente (compras esperando tu OK), luego el saldo y el botón para pagar
+    main.innerHTML = `
+      ${pend.length ? `<div class="section-title" style="margin-top:4px"><h2>${icon('clock', 20)} Esperan tu confirmación</h2></div>${pend.map(v => `<div class="card pend-card">
+          <div class="spread"><div><strong>${esc(v.nombre_comercial)}</strong><div class="small muted">N.º ${v.id} · vence a las ${ftime(v.expira_confirmacion)}</div></div><div style="font-size:22px;font-weight:700" class="num">${fmt(v.total)}</div></div>
           <div class="small" style="margin:8px 0">${v.detalle.map(d => `${d.cantidad}× ${esc(d.descripcion)}`).join(', ')}</div>
           <div class="small muted">${v.pagos.map(p => `${FORMA[p.forma]}: ${fmt(p.monto)}`).join(' · ')}</div>
-          <div class="btns" style="margin-top:12px"><button class="btn primary grow" data-ok="${v.id}">Confirmar</button><button class="btn danger grow" data-no="${v.id}">Rechazar</button></div></div>`).join('')}` : ''}
-      <div class="section-title"><h2>Mis compras</h2></div>
-      <div class="list" id="cl">${compras.filter(v => v.estado !== 'por_confirmar').map(v => ventaItem(v, 'comprador')).join('') || '<div class="empty">Aún no tienes compras</div>'}</div>`;
+          <div class="tiny muted" style="margin-top:6px">Si no la confirmas a tiempo, se anula sola y no se te cobra.</div>
+          <div class="btns" style="margin-top:12px"><button class="btn primary grow lg" data-ok="${v.id}">${icon('check', 18)} Sí, confirmar</button><button class="btn danger grow lg" data-no="${v.id}">No es mía</button></div></div>`).join('')}` : ''}
+      <div class="balance" style="${pend.length ? 'margin-top:14px' : ''}"><div class="row" style="gap:8px"><span class="bal-ic">${icon('wallet', 20)}</span><div class="lbl">Tu saldo para compras</div></div>
+        <div class="big">${fmt(s.disponible)}</div>
+        <div class="bal-bar" aria-hidden="true"><i style="width:${s.asignado ? Math.min(100, s.usado / s.asignado * 100) : 0}%"></i></div>
+        <div class="meta"><span>Te asignaron ${fmt(s.asignado)}</span><span>Ya usaste ${fmt(s.usado)}</span></div></div>
+      ${s.disponible > 0 ? `<div class="card paycode" style="margin-top:12px" id="paycode">
+        <div class="pc-h">${icon('shield', 22)}<div><div style="font-weight:700;font-size:16px">Pagar con tu saldo</div><div class="tiny muted">Seguro: el código sirve una sola vez</div></div></div>
+        <ol class="how">
+          <li><span>1</span><div>En el puesto, dile al vendedor qué vas a llevar.</div></li>
+          <li><span>2</span><div>Cuando vayas a pagar, toca <strong>Generar código</strong>.</div></li>
+          <li><span>3</span><div><strong>Escribe tú</strong> el código en el equipo del vendedor. No lo digas en voz alta.</div></li>
+        </ol>
+        <div id="pc-box"></div>
+        <button class="btn primary block lg" id="b-code">${icon('shield', 20)} Generar código</button>
+        <div class="tiny muted center" style="margin-top:8px">Vence en ${S.me.evento.minutos_codigo_pago} minutos. Si se vence, genera otro: no pasa nada.</div></div>`
+      : `<div class="card center" style="margin-top:12px"><div style="font-size:28px">🎉</div><strong>Ya usaste todo tu saldo</strong>
+        <p class="small muted" style="margin:4px 0 0">Puedes seguir comprando: paga en efectivo o por transferencia directamente en el puesto.</p></div>`}
+      ${S.me.pin_temporal && S.me.evento.pago_con_pin ? `<div class="alert warn" style="margin-top:12px">${icon('alert', 16)} Te recomendamos cambiar el PIN que recibiste por correo. <a href="#cuenta" id="go-c">Cambiar PIN</a></div>` : ''}
+      <div class="section-title"><h2>${icon('receipt', 20)} Mis compras</h2></div>
+      <div class="list" id="cl">${compras.filter(v => v.estado !== 'por_confirmar').map(v => ventaItem(v, 'comprador')).join('')
+        || emptyState('bag', 'Aún no tienes compras', 'Mira el catálogo para ver qué ofrece cada emprendimiento.', '<button class="btn" id="go-cat" style="margin-top:10px">' + icon('store', 18) + ' Ver catálogo</button>')}</div>`;
     const gc = $('#go-c'); if (gc) gc.onclick = (e) => { e.preventDefault(); go('cuenta'); };
+    const gk = $('#go-cat'); if (gk) gk.onclick = () => go('catalogo');
     const bc = $('#b-code');
     if (bc) bc.onclick = () => guard(bc, async () => {
       const r = await api('POST', '/api/me/codigo-pago', {});
@@ -631,16 +774,16 @@
       if (left <= 0) {
         clearInterval(showPayCode._t); S.payCode = null;
         box.innerHTML = '<div class="alert warn small">El código venció. Genera uno nuevo cuando vayas a pagar.</div>';
-        if (btn) btn.textContent = 'Generar código de pago';
+        if (btn) btn.innerHTML = icon('shield', 20) + ' Generar código';
         return;
       }
       const m = Math.floor(left / 60000), sgs = Math.floor(left / 1000) % 60;
       box.innerHTML = `<div class="code" aria-label="Código de pago">${esc(r.codigo.replace(/(\d{3})(\d{3})/, '$1 $2'))}</div>
         <div class="bar"><i style="width:${Math.max(0, left / total * 100)}%"></i></div>
-        <div class="tiny muted">Vence en ${m}:${String(sgs).padStart(2, '0')} · Escríbelo tú, no lo digas en voz alta</div>`;
+        <div class="tiny muted">${icon('clock', 13)} Vence en ${m}:${String(sgs).padStart(2, '0')} · Escríbelo tú, no lo digas en voz alta</div>`;
     };
     tick(); showPayCode._t = setInterval(tick, 1000);
-    if (btn) btn.textContent = 'Generar otro código';
+    if (btn) btn.innerHTML = icon('shield', 20) + ' Generar otro código';
   }
 
   // ---------- Catálogo ----------
@@ -672,10 +815,10 @@
     const cats = data.categorias.filter(c => porCat(c).length);
     const nProd = emps.reduce((a, e) => a + e.productos.length, 0);
     main.innerHTML = `<div class="cat-tools">
-        <input class="input" id="cq" placeholder="Buscar producto o emprendimiento" value="${esc(C.q)}" autocomplete="off" inputmode="search">
+        <div class="input-ic">${icon('search', 18)}<input class="input" id="cq" placeholder="Buscar producto o emprendimiento" value="${esc(C.q)}" autocomplete="off" inputmode="search"></div>
         <div class="chips" style="margin-top:10px" id="cc">
           <button class="chip ${C.cat ? '' : 'on'}" data-c="">Todas<span class="n">${emps.length}</span></button>
-          ${cats.map(c => `<button class="chip ${C.cat === c ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}<span class="n">${porCat(c).length}</span></button>`).join('')}
+          ${cats.map(c => `<button class="chip ${C.cat === c ? 'on' : ''}" data-c="${esc(c)}">${catEmoji(c)} ${esc(c)}<span class="n">${porCat(c).length}</span></button>`).join('')}
         </div></div>
       <div class="tiny muted" style="margin:0 2px 4px">${emps.length} emprendimientos · ${nProd} productos · el orden es aleatorio para que todos tengan la misma visibilidad</div>
       <div id="cat"></div>`;
@@ -705,10 +848,10 @@
         // Búsqueda: todos los emprendimientos que coinciden, en el mismo orden aleatorio
         const res = emps.filter(e => !C.cat || e.categoria === C.cat).map(e => empCard(e, q)).filter(Boolean);
         html = res.length ? `<div class="cat-h"><h2>Resultados</h2><span>${res.length} ${res.length === 1 ? 'emprendimiento' : 'emprendimientos'}</span></div>${res.join('')}`
-          : '<div class="empty">No encontramos ese producto. Prueba con otra palabra.</div>';
+          : emptyState('search', 'No encontramos eso', 'Prueba con otra palabra, por ejemplo "café" o "pulsera", o quita el filtro de categoría.');
       } else {
-        html = (C.cat ? [C.cat] : cats).map(c => `<div class="cat-h"><h2>${esc(c)}</h2><span>${porCat(c).length} ${porCat(c).length === 1 ? 'emprendimiento' : 'emprendimientos'}</span></div>${porCat(c).map(e => empCard(e, '')).join('')}`).join('')
-          || '<div class="empty">No hay productos todavía</div>';
+        html = (C.cat ? [C.cat] : cats).map(c => `<div class="cat-h"><h2><span aria-hidden="true">${catEmoji(c)}</span> ${esc(c)}</h2><span>${porCat(c).length} ${porCat(c).length === 1 ? 'emprendimiento' : 'emprendimientos'}</span></div>${porCat(c).map(e => empCard(e, '')).join('')}`).join('')
+          || emptyState('bag', 'Aún no hay productos', 'Los emprendedores están cargando su catálogo. Vuelve a mirar en un rato.');
       }
       $('#cat').innerHTML = html;
       $('#cat').querySelectorAll('[data-emp] > button').forEach(b => { b.onclick = () => {
@@ -975,5 +1118,6 @@
     $('#b-retry').onclick = (e) => guard(e.currentTarget, async () => { await api('POST', '/api/super/correos/reintentar', {}); toast('Reintentando envíos'); });
   };
 
+  netBar();
   start();
 })();
