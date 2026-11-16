@@ -1,0 +1,18 @@
+{
+  "name": "feria-emprendedores",
+  "version": "1.0.0",
+  "description": "Aplicación web de ventas para la feria interna de emprendedores",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node scripts/demo.js && node server.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "mssql": "^11.0.1",
+    "nodemailer": "^6.9.16"
+  }
+}

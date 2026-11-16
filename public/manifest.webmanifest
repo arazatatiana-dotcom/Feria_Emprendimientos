@@ -1,0 +1,9 @@
+{
+  "name": "Feria de Emprendedores",
+  "short_name": "Feria",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#1f5f3f",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
