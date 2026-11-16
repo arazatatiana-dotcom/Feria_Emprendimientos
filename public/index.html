@@ -7,14 +7,15 @@
 <title>Feria de Emprendedores</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="styles.css">
+<!-- ?v=: súbalo en cada publicación para que los navegadores no usen archivos viejos guardados -->
+<link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
 <div id="app"><div class="boot">Cargando…</div></div>
 <div id="modal-root"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <!-- Modo demostración: solo se activa en GitHub Pages (*.github.io) o con ?demo; en el servidor real no hace nada -->
-<script src="demo/demo.js"></script>
-<script src="app.js"></script>
+<script src="demo/demo.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

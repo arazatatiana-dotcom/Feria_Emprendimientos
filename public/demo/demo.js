@@ -306,8 +306,37 @@
     if (document.body) put(); else document.addEventListener('DOMContentLoaded', put);
   }
   showBanner(`<strong>Demostración</strong>: los datos se guardan solo en este navegador y no se envían correos.
-    Usuarios (clave <code>demo123</code>, PIN <code>2580</code>): super admin <code>0000000000</code> ·
-    admin <code>1111111111</code> · emprendedora <code>0102030405</code> · comprador <code>1700000000</code>.
     <button id="demo-reset" style="margin-left:6px;cursor:pointer">Reiniciar demo</button>
     <button id="demo-hide" aria-label="Ocultar aviso" style="margin-left:4px;cursor:pointer">×</button>`);
+
+  // ================= Usuarios de prueba en la pantalla de ingreso =================
+  const USUARIOS = [
+    ['r-super', 'Super admin', '0000000000', 'Todo, más Usuarios y Ajustes'],
+    ['r-admin', 'Administrador', '1111111111', 'Panel en vivo, ventas y reportes'],
+    ['r-emp', 'Emprendedora', '0102030405', 'Vender y productos (también compra)'],
+    ['r-comp', 'Comprador', '1700000000', 'Saldo, código de pago y catálogo'],
+  ];
+  function tarjetaUsuarios() {
+    const f = document.getElementById('f-login');
+    if (!f || f.querySelector('#demo-users')) return;
+    const d = document.createElement('div');
+    d.id = 'demo-users';
+    d.style.cssText = 'border-top:1px solid var(--line);padding-top:12px;margin-top:4px';
+    d.innerHTML = `<div style="font-weight:700;font-size:14px">Usuarios de prueba</div>
+      <div class="tiny muted" style="margin:2px 0 8px">Clave <code>demo123</code> · PIN <code>2580</code></div>
+      ${USUARIOS.map(([cls, rol, ced, que]) => `<div class="row" style="padding:6px 0;gap:8px">
+        <div class="grow"><span class="role-tag ${cls}">${rol}</span> <code style="font-size:13px">${ced}</code><div class="tiny muted" style="margin-top:2px">${que}</div></div>
+        <button type="button" class="btn sm" data-demo-user="${ced}">Entrar</button></div>`).join('')}`;
+    f.appendChild(d);
+    d.querySelectorAll('[data-demo-user]').forEach((b) => {
+      b.onclick = () => { f.cedula.value = b.dataset.demoUser; f.clave.value = 'demo123'; f.requestSubmit(); };
+    });
+  }
+  const iniciarTarjeta = () => {
+    const app = document.getElementById('app');
+    if (!app) return;
+    new MutationObserver(tarjetaUsuarios).observe(app, { childList: true });
+    tarjetaUsuarios();
+  };
+  if (document.getElementById('app')) iniciarTarjeta(); else document.addEventListener('DOMContentLoaded', iniciarTarjeta);
 })();
