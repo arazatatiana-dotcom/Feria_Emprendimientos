@@ -238,6 +238,35 @@ details.faq + details.faq { margin-top: 8px; }
 details.faq summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 details.faq > div { font-size: 13.5px; color: var(--ink-2); margin-top: 6px; }
 
+/* Botón "i" (explicación corta). Grande para dedos, fácil de ver */
+.info-i { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--info);
+  background: var(--info-soft); color: var(--info); font: italic 700 15px/1 Georgia, 'Times New Roman', serif; cursor: pointer;
+  vertical-align: middle; margin-left: 4px; padding: 0; flex: 0 0 auto; position: relative; }
+.info-i::after { content: ""; position: absolute; inset: -8px; } /* área de toque más grande que el círculo */
+.info-i.on-dark { background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.8); color: #fff; }
+#info-pop { position: fixed; z-index: 90; background: var(--ink); color: #fff; border-radius: 14px; padding: 14px 16px; font-size: 15px; line-height: 1.45;
+  box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+#info-pop .btn { margin-top: 10px; background: rgba(255,255,255,.15); color: #fff; border-color: transparent; }
+
+/* Recorrido guiado */
+#tour { position: fixed; inset: 0; z-index: 10000; }
+#tour .tour-hole { position: fixed; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(15,23,20,.62); outline: 3px solid #fde68a; transition: all .25s ease; pointer-events: none; }
+#tour .tour-tip { position: fixed; background: var(--surface); color: var(--ink); border-radius: 18px; padding: 16px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.3); transition: top .25s, left .25s; }
+#tour .tour-tip h3 { font-size: 19px; margin: 6px 0 4px; }
+#tour .tour-tip p { font-size: 16px; line-height: 1.45; margin: 0 0 14px; color: var(--ink-2); }
+#tour .tour-step { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+#tour .tour-dots { display: flex; gap: 5px; margin-top: 6px; }
+#tour .tour-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+#tour .tour-dots i.on { background: var(--brand); width: 20px; border-radius: 4px; }
+
+/* Menú de ayuda */
+.help-opt { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 16px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--surface); cursor: pointer; font: inherit; color: inherit; }
+.help-opt:active { background: var(--surface-2); }
+.help-opt .e { font-size: 28px; }
+.help-opt strong { display: block; font-size: 16px; }
+.help-opt .s { display: block; font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+
 /* Sin conexión */
 .net-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 70; display: flex; gap: 8px; align-items: center; justify-content: center;
   background: var(--bad); color: #fff; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; font-size: 13.5px; font-weight: 600; text-align: center; }

@@ -214,12 +214,12 @@
       <button class="avatar" id="b-me" title="Mi cuenta · ${esc(rolesDe(me).map(r => r[1]).join(', '))}">${esc(initials(nombre))}</button></header>
       <div class="shell"><nav class="nav" id="nav"></nav><main id="main"></main></div>`;
     $('#b-me').onclick = () => go('cuenta');
-    $('#b-help').onclick = showHelp;
+    $('#b-help').onclick = showHelpMenu;
     renderNav();
-    // La primera vez que alguien entra, se le muestra la ayuda de su rol (una sola vez por equipo)
+    // La primera vez que alguien entra en este equipo, se le ofrece un recorrido corto, paso a paso
     try {
-      const k = 'feria_ayuda_' + rolesDe(me).map(r => r[0]).join('_');
-      if (!localStorage.getItem(k)) { localStorage.setItem(k, '1'); setTimeout(showHelp, 400); }
+      const k = 'feria_tour_' + rolesDe(me).map(r => r[0]).join('_');
+      if (!localStorage.getItem(k)) { localStorage.setItem(k, '1'); setTimeout(startTour, 700); }
     } catch (_) { /* sin almacenamiento: no pasa nada */ }
   }
   function renderNav() {
@@ -246,7 +246,7 @@
 
   // Refresco periódico (confirmaciones pendientes, panel en vivo)
   setInterval(async () => {
-    if (!S.me || document.hidden || $('#modal-root').innerHTML) return;
+    if (!S.me || document.hidden || $('#modal-root').innerHTML || $('#tour')) return;
     try {
       if (S.me.es_comprador) {
         const prev = S.me.por_confirmar, prevCompra = S.me.ultima_compra_saldo;
@@ -260,12 +260,104 @@
     } catch (_) { /* sin conexión momentánea */ }
   }, 15000);
 
+  // ================= Recorrido guiado (un paso a la vez) =================
+  // Ilumina una sola parte de la pantalla con una frase corta y un botón grande "Siguiente".
+  // Pocos pasos por rol: lo mínimo para empezar. El resto está en los botones "i".
+  const NAV = (t) => `#nav [data-tab="${t}"]`;
+  function tourSteps() {
+    const r = rolesDe(S.me).map(x => x[0]), st = [];
+    if (r.includes('super') || r.includes('admin')) {
+      st.push({ tab: 'panel', sel: '.kpis', t: '📊 Ventas en vivo', d: 'Aquí ves cuánto se vende en la feria. Se actualiza solo.' });
+      st.push({ sel: NAV('aventas'), t: '📋 Todas las ventas', d: 'Toca aquí para buscar cualquier venta y revisar las compras reportadas.' });
+      st.push({ sel: NAV('reportes'), t: '📥 Reportes', d: 'Aquí descargas en Excel lo que debe cada empleado y lo que se paga a cada emprendedor.' });
+      if (r.includes('super')) st.push({ sel: NAV('ajustes'), t: '🛠️ Ajustes', d: 'Aquí cargas los Excel, envías los accesos y cambias las reglas de la feria.' });
+    }
+    if (r.includes('emp')) {
+      st.push({ tab: 'productos', sel: '#b-add', t: '📦 Primero, tus productos', d: 'Toca "+ Agregar" y escribe el nombre, el precio y cuántos tienes.' });
+      st.push({ tab: 'vender', sel: '#q-comp', t: '🔎 Para vender, busca al comprador', d: 'Escribe su cédula o su apellido y tócalo en la lista.' });
+      st.push({ sel: '#prod-list', t: '➕ Elige lo que lleva', d: 'Toca el botón + en cada producto.' });
+      st.push({ sel: '#b-save', t: '✅ Registra la venta', d: 'Si paga con saldo, pásale tu celular para que él escriba su código.' });
+      if (r.includes('comp')) st.push({ sel: NAV('inicio'), t: '🛍️ También puedes comprar', d: 'En "Compras" está tu saldo y el botón para pagar con código.' });
+    } else if (r.includes('comp')) {
+      st.push({ tab: 'inicio', sel: '.balance', t: '💰 Este es tu saldo', d: 'Es el dinero que tienes para comprar en la feria.' });
+      st.push({ tab: 'inicio', sel: '#b-code', t: '🔐 Para pagar, toca aquí', d: 'Te sale un número. Escríbelo tú en el celular del vendedor.' });
+      st.push({ tab: 'catalogo', sel: '.cat-tools', t: '🛍️ Mira qué venden', d: 'Toca una categoría o escribe lo que buscas.' });
+    }
+    st.push({ sel: '#b-help', t: '❓ ¿Tienes dudas?', d: 'Toca este botón cuando quieras para ver este recorrido otra vez. Y si ves una "i", tócala: te explica esa parte.' });
+    return st;
+  }
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  async function waitFor(sel, ms = 3000) {
+    for (let t = 0; t < ms; t += 100) { const el = document.querySelector(sel); if (el && el.getClientRects().length) return el; await sleep(100); }
+    return null;
+  }
+  async function startTour() {
+    if ($('#tour')) return;
+    closeModal(); hideInfo();
+    const steps = tourSteps();
+    const layer = document.createElement('div');
+    layer.id = 'tour';
+    layer.innerHTML = '<div class="tour-hole"></div><div class="tour-tip" role="dialog" aria-modal="true" aria-live="polite"></div>';
+    document.body.appendChild(layer);
+    const hole = $('.tour-hole', layer), tip = $('.tour-tip', layer);
+    let i = 0, target = null;
+    const place = () => {
+      if (!target) return;
+      const r = target.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight, pad = 6;
+      Object.assign(hole.style, { top: r.top - pad + 'px', left: Math.max(4, r.left - pad) + 'px', width: Math.min(vw - 8, r.width + pad * 2) + 'px', height: r.height + pad * 2 + 'px' });
+      const w = Math.min(360, vw - 32); tip.style.width = w + 'px';
+      tip.style.left = Math.max(16, Math.min(vw - w - 16, r.left + r.width / 2 - w / 2)) + 'px';
+      const h = tip.offsetHeight;
+      let top = r.bottom + 14;
+      if (top + h > vh - 12) top = r.top - h - 14;
+      if (top < 12) top = vh - h - 16; // el elemento es muy alto: la tarjeta va abajo
+      tip.style.top = top + 'px';
+    };
+    const end = () => { layer.remove(); window.removeEventListener('resize', place); };
+    const show = async () => {
+      tip.innerHTML = '<div class="center"><span class="spinner"></span></div>';
+      target = null;
+      while (i < steps.length) {
+        const s = steps[i];
+        if (s.tab && S.tab !== s.tab) go(s.tab);
+        target = await waitFor(s.sel);
+        if (target) break;
+        i++; // si esa parte no existe para esta persona (p. ej. sin saldo), se salta
+      }
+      if (!target) return end();
+      target.scrollIntoView({ block: 'center' });
+      await sleep(300);
+      const s = steps[i], last = i === steps.length - 1;
+      tip.innerHTML = `<div class="tour-step">Paso ${i + 1} de ${steps.length}</div>
+        <div class="tour-dots">${steps.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div>
+        <h3>${s.t}</h3><p>${s.d}</p>
+        <div class="btns"><button class="btn ghost" data-t="skip">${last ? 'Cerrar' : 'Saltar'}</button>
+        <button class="btn primary lg grow" data-t="next">${last ? '¡Listo!' : 'Siguiente →'}</button></div>`;
+      place();
+      $('[data-t="next"]', tip).focus();
+      $('[data-t="next"]', tip).onclick = () => { if (last) end(); else { i++; show(); } };
+      $('[data-t="skip"]', tip).onclick = end;
+    };
+    window.addEventListener('resize', place);
+    show();
+  }
+
+  // Botón ❓: dos opciones grandes y claras
+  function showHelpMenu() {
+    const b = modal('¿En qué te ayudo?', `<div class="stack">
+      <button class="help-opt" id="hm-tour"><span class="e">▶️</span><span><strong>Ver el recorrido</strong><span class="s">Te muestro paso a paso cómo usar la app</span></span></button>
+      <button class="help-opt" id="hm-faq"><span class="e">🛟</span><span><strong>Tengo un problema</strong><span class="s">Soluciones a lo que más pasa en la feria</span></span></button>
+      <p class="tiny muted center" style="margin:4px 0 0">También puedes tocar la <span class="info-i" style="pointer-events:none">i</span> junto a cada sección.</p></div>`);
+    $('#hm-tour', b).onclick = () => { closeModal(); startTour(); };
+    $('#hm-faq', b).onclick = () => { closeModal(); showHelp(); };
+  }
+
   // ================= Ayuda "¿Cómo funciona?" según el rol =================
   // Pasos simples y los problemas que más pueden pasar en la feria, con qué hacer en cada caso.
   function showHelp() {
     const me = S.me, roles = rolesDe(me).map(r => r[0]);
     const pasos = (titulo, emoji, lista) => `<div class="help-sec"><h3>${emoji} ${titulo}</h3><ol class="how">${lista.map((t, i) => `<li><span>${i + 1}</span><div>${t}</div></li>`).join('')}</ol></div>`;
-    const faq = (lista) => `<div class="help-sec"><h3>🛟 Si algo pasa</h3>${lista.map(([q, a]) => `<details class="faq"><summary>${q}</summary><div>${a}</div></details>`).join('')}</div>`;
+    const faq = (lista) => `<div class="help-sec">${lista.map(([q, a]) => `<details class="faq"><summary>${q}</summary><div>${a}</div></details>`).join('')}</div>`;
     const secs = [];
     const comunes = [];
     if (roles.includes('comp')) {
@@ -319,9 +411,11 @@
       );
     }
     comunes.push(['📶 La app dice "Sin conexión"', 'Es el Wi-Fi del lugar. Tus datos no se pierden: espera unos segundos y vuelve a intentar.']);
-    const b = modal('¿Cómo funciona?', `<div class="stack">
-      <div class="row wrap" style="gap:6px">${roleTags(me)}</div>
-      ${secs.join('')}${faq(comunes)}
+    // Solo los problemas y su solución (los pasos los enseña el recorrido); cada uno se abre al tocarlo
+    void secs;
+    const b = modal('Tengo un problema', `<div class="stack">
+      <p class="small muted" style="margin:0">Toca lo que te pasa para ver qué hacer.</p>
+      ${faq(comunes)}
       <div class="alert info small">${icon('shield', 16)} <strong>Seguridad:</strong> nunca compartas tu contraseña ni tu PIN. El personal de la feria nunca te los va a pedir.</div>
       <button class="btn primary block lg" id="h-ok">Entendido</button></div>`, { wide: true });
     $('#h-ok', b).onclick = closeModal;
@@ -345,6 +439,49 @@
   // Estado vacío con icono, título y una indicación de qué hacer
   const emptyState = (ic, titulo, texto, extra = '') => `<div class="empty-state"><div class="ic">${icon(ic, 30)}</div>
     <div class="t">${titulo}</div>${texto ? `<div class="s">${texto}</div>` : ''}${extra}</div>`;
+
+  // ---------- Botón "i": explicación corta de cada sección ----------
+  // Frases cortas y sin palabras técnicas: mucha gente de la feria no usa tecnología a diario.
+  const INFO = {
+    saldo: 'Es el dinero que la empresa te da para comprar en la feria. Lo que uses se descuenta después de tu rol de pagos.',
+    codigo: 'Es un número de 6 cifras para pagar con tu saldo. Sirve una sola vez y dura pocos minutos, así nadie más lo puede usar.',
+    confirmar: 'Un vendedor registró una compra a tu nombre. Dinos si es tuya. Si no respondes a tiempo, se cancela sola y no se te cobra.',
+    compras: 'Aquí está todo lo que compraste. Toca una compra para ver el detalle.',
+    catalogo: 'Toca una categoría para ver sus puestos y toca un puesto para ver lo que vende. El orden cambia para cada persona, así todos tienen la misma oportunidad.',
+    quien: 'Busca a la persona que te compra: escribe su cédula o su apellido y tócala en la lista.',
+    que: 'Toca + para agregar un producto y − para quitarlo. Si se acabó, marca "Entrega posterior" y lo entregas otro día.',
+    como: 'Elige cómo te paga. "Saldo" es el dinero de la empresa: ese valor te lo paga la empresa después. Puedes combinar, por ejemplo saldo y efectivo.',
+    autorizacion: 'Para cobrar con saldo, el comprador debe aprobarlo. Pásale tu celular para que él mismo escriba su código.',
+    porcobrar: 'Es lo que te pagaron con saldo. Ese dinero te lo entrega la empresa después de la feria.',
+    categoria: 'Es el grupo donde apareces en el catálogo, por ejemplo Comida o Artesanías. Así los compradores te encuentran más fácil.',
+    stock: 'Cuántas unidades tienes para vender hoy. Baja solo cada vez que vendes.',
+    misventas: 'Aquí ves todo lo que vendiste. Toca una venta para modificarla, anularla o marcarla como entregada.',
+    pin: 'Es una clave de 4 números para pagar con tu saldo. Es más seguro usar el código del celular, porque sirve una sola vez.',
+    panel: 'Resumen de la feria en vivo: se actualiza solo cada 15 segundos.',
+    reportadas: 'Compras que un comprador dice que no hizo. Revisa con el emprendedor antes de decidir.',
+  };
+  const infoBtn = (k) => `<button type="button" class="info-i" data-info="${k}" aria-label="¿Qué es esto?" title="¿Qué es esto?">i</button>`;
+  function showInfo(btn) {
+    hideInfo();
+    const p = document.createElement('div');
+    p.id = 'info-pop'; p.setAttribute('role', 'tooltip');
+    p.innerHTML = `<div>${esc(INFO[btn.dataset.info] || '')}</div><button type="button" class="btn sm" id="info-ok">Entendido</button>`;
+    document.body.appendChild(p);
+    const r = btn.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+    const w = Math.min(320, vw - 32);
+    p.style.width = w + 'px';
+    p.style.left = Math.max(16, Math.min(vw - w - 16, r.left + r.width / 2 - w / 2)) + 'px';
+    const h = p.offsetHeight;
+    p.style.top = (r.bottom + h + 12 < vh ? r.bottom + 8 : Math.max(8, r.top - h - 8)) + 'px';
+    $('#info-ok', p).onclick = hideInfo;
+  }
+  function hideInfo() { const p = $('#info-pop'); if (p) p.remove(); }
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-info]');
+    if (b) { e.preventDefault(); e.stopPropagation(); showInfo(b); return; }
+    if (!e.target.closest('#info-pop')) hideInfo();
+  }, true);
+  window.addEventListener('scroll', hideInfo, { passive: true });
   function estadoBadges(v) {
     const b = [];
     if (v.estado === 'anulada') b.push('<span class="badge b-bad">Anulada</span>');
@@ -502,14 +639,14 @@
     main.innerHTML = `
       ${s.editId ? `<div class="alert info spread" style="margin-bottom:12px"><span>Modificando la venta <strong>N.º ${s.editId}</strong></span><button class="btn sm" id="b-cancel-edit">Cancelar</button></div>` : ''}
       <div class="card">
-        <div class="steps-h"><span class="n">1</span>¿Quién compra?</div>
+        <div class="steps-h"><span class="n">1</span>¿Quién compra? ${infoBtn('quien')}</div>
         ${c ? `<div class="buyer"><div class="ini">${esc(initials(c.nombre))}</div><div class="grow"><div style="font-weight:600">${esc(c.nombre)}</div><div class="small muted">${esc(c.cedula)}</div></div>
           <div class="right"><div class="tiny muted">Saldo disponible</div><div style="font-weight:700;font-size:18px" class="num">${fmt(m2(c2(c.saldo_disponible) + c2(c.saldo_previo || 0)))}</div></div></div>
           ${s.editId ? '' : '<button class="btn sm ghost" id="b-chg" style="margin-top:6px">Cambiar comprador</button>'}`
         : `<div class="input-ic">${icon('search', 18)}<input class="input" id="q-comp" placeholder="Escribe la cédula, nombre o apellido" autocomplete="off" inputmode="search"></div><div id="r-comp" style="margin-top:8px"></div>`}
       </div>
       <div class="card">
-        <div class="steps-h"><span class="n">2</span>¿Qué lleva?</div>
+        <div class="steps-h"><span class="n">2</span>¿Qué lleva? ${infoBtn('que')}</div>
         ${prods.length > 8 ? '<input class="input" id="q-prod" placeholder="Buscar producto" style="margin-bottom:8px">' : ''}
         ${!prods.length ? emptyState('box', 'Aún no tienes productos', 'Primero agrega lo que vas a vender, con su precio y cuántos tienes.', '<a class="btn primary" href="#productos" id="go-prod" style="margin-top:10px">+ Agregar productos</a>') : ''}
         <div id="prod-list">${prods.map(p => {
@@ -520,7 +657,7 @@
         }).join('')}</div>
       </div>
       <div class="card" id="pay-card">
-        <div class="steps-h"><span class="n">3</span>¿Cómo paga?</div>
+        <div class="steps-h"><span class="n">3</span>¿Cómo paga? ${infoBtn('como')}</div>
         ${['saldo', 'efectivo', 'transferencia'].map(f => `<div class="pay"><label for="p-${f}"><span class="pay-ic f-${f}">${icon(FORMA_IC[f], 18)}</span><span>${FORMA[f]}${f === 'saldo' ? '<span class="tiny muted" style="display:block;font-weight:400">cuenta por cobrar</span>' : ''}</span></label>
           <input class="input money" id="p-${f}" data-pay="${f}" inputmode="decimal" placeholder="0.00" value="${esc(s.pagos[f])}" ${f === 'saldo' && (!c || !c.saldo_disponible && !c.saldo_previo) ? 'disabled' : ''}></div>`).join('')}
         <div class="tiny muted" style="margin:2px 0 6px">Puedes combinar: por ejemplo, parte con saldo y el resto en efectivo.</div>
@@ -600,7 +737,7 @@
     if (!needAuth) { box.dataset.state = ''; box.innerHTML = ''; return; }
     if (box.dataset.state === 'auth-' + s.auth) return;
     box.dataset.state = 'auth-' + s.auth;
-    box.innerHTML = `<hr class="sep"><div style="font-weight:600;margin-bottom:6px">Autorización del comprador</div>
+    box.innerHTML = `<hr class="sep"><div style="font-weight:600;margin-bottom:6px">Autorización del comprador ${infoBtn('autorizacion')}</div>
       <div class="chips" style="margin-bottom:10px"><button class="chip ${s.auth === 'pin' ? 'on' : ''}" data-auth="pin">${authLabel()} aquí</button><button class="chip ${s.auth === 'app' ? 'on' : ''}" data-auth="app">Aprobar en su celular</button></div>
       ${s.auth === 'pin' ? `<input class="input pin" id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="${S.me.evento.pago_con_pin ? '••••' : '••••••'}" value="${esc(s.pin)}">
         <div class="tiny muted center" style="margin-top:6px">${S.me.evento.pago_con_pin
@@ -654,7 +791,7 @@
     const R = r.resumen;
     main.innerHTML = `<div class="kpis">
         <div class="kpi"><div class="l">Total vendido</div><div class="v">${fmt(R.total)}</div><div class="d">${R.ventas} ${R.ventas === 1 ? 'venta confirmada' : 'ventas confirmadas'}</div></div>
-        <div class="kpi"><div class="l">Saldo (cuentas por cobrar)</div><div class="v">${fmt(R.saldo)}</div><div class="d">Lo paga la empresa</div></div>
+        <div class="kpi"><div class="l">Saldo (cuentas por cobrar) ${infoBtn('porcobrar')}</div><div class="v">${fmt(R.saldo)}</div><div class="d">Lo paga la empresa</div></div>
         <div class="kpi"><div class="l">Efectivo</div><div class="v">${fmt(R.efectivo)}</div></div>
         <div class="kpi"><div class="l">Transferencia</div><div class="v">${fmt(R.transferencia)}</div></div></div>
       <div class="section-title"><div class="chips" id="vf">
@@ -678,7 +815,7 @@
     const prods = await api('GET', '/api/productos');
     const catAct = S.me.emprendimiento.categoria || '';
     main.innerHTML = `<div class="card ${catAct ? '' : 'flat'}" style="${catAct ? '' : 'border:2px solid var(--accent)'}">
-        <label class="field"><span>Categoría de tu emprendimiento en el catálogo</span>
+        <label class="field"><span>Categoría de tu emprendimiento en el catálogo ${infoBtn('categoria')}</span>
         <select class="input" id="mi-cat"><option value="">— Elige una categoría —</option>${S.me.categorias.map(c => `<option ${c === catAct ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
         ${catAct ? '' : '<div class="tiny" style="margin-top:6px;color:var(--warn)">Mientras no elijas, apareces en "Otros". Elige la que mejor describa lo que vendes para que los compradores te encuentren.</div>'}</div>
       <div class="section-title"><h2>Mis productos</h2><button class="btn primary sm" id="b-add">+ Agregar</button></div>
@@ -698,7 +835,7 @@
       <label class="field"><span>Nombre</span><input class="input" name="nombre" required maxlength="150" value="${esc(p?.nombre)}"></label>
       <label class="field"><span>Descripción (opcional)</span><input class="input" name="descripcion" maxlength="500" value="${esc(p?.descripcion)}"></label>
       <div class="grid2"><label class="field"><span>Precio ($)</span><input class="input money" name="precio" inputmode="decimal" required value="${p ? Number(p.precio).toFixed(2) : ''}"></label>
-      <label class="field"><span>Stock disponible</span><input class="input money" name="stock" inputmode="numeric" required value="${p ? p.stock : ''}"></label></div>
+      <label class="field"><span>Cuántos tienes ${infoBtn('stock')}</span><input class="input money" name="stock" inputmode="numeric" required value="${p ? p.stock : ''}"></label></div>
       <label class="check"><input type="checkbox" name="activo" ${!p || p.activo ? 'checked' : ''}> Visible y a la venta</label>
       <button class="btn primary block lg">Guardar</button></form>`);
     $('#pf', b).onsubmit = (e) => {
@@ -719,18 +856,18 @@
     const pend = compras.filter(v => v.estado === 'por_confirmar');
     // Orden pensado para la feria: primero lo urgente (compras esperando tu OK), luego el saldo y el botón para pagar
     main.innerHTML = `
-      ${pend.length ? `<div class="section-title" style="margin-top:4px"><h2>${icon('clock', 20)} Esperan tu confirmación</h2></div>${pend.map(v => `<div class="card pend-card">
+      ${pend.length ? `<div class="section-title" style="margin-top:4px"><h2>${icon('clock', 20)} Esperan tu confirmación ${infoBtn('confirmar')}</h2></div>${pend.map(v => `<div class="card pend-card">
           <div class="spread"><div><strong>${esc(v.nombre_comercial)}</strong><div class="small muted">N.º ${v.id} · vence a las ${ftime(v.expira_confirmacion)}</div></div><div style="font-size:22px;font-weight:700" class="num">${fmt(v.total)}</div></div>
           <div class="small" style="margin:8px 0">${v.detalle.map(d => `${d.cantidad}× ${esc(d.descripcion)}`).join(', ')}</div>
           <div class="small muted">${v.pagos.map(p => `${FORMA[p.forma]}: ${fmt(p.monto)}`).join(' · ')}</div>
           <div class="tiny muted" style="margin-top:6px">Si no la confirmas a tiempo, se anula sola y no se te cobra.</div>
           <div class="btns" style="margin-top:12px"><button class="btn primary grow lg" data-ok="${v.id}">${icon('check', 18)} Sí, confirmar</button><button class="btn danger grow lg" data-no="${v.id}">No es mía</button></div></div>`).join('')}` : ''}
-      <div class="balance" style="${pend.length ? 'margin-top:14px' : ''}"><div class="row" style="gap:8px"><span class="bal-ic">${icon('wallet', 20)}</span><div class="lbl">Tu saldo para compras</div></div>
+      <div class="balance" style="${pend.length ? 'margin-top:14px' : ''}"><div class="row" style="gap:8px"><span class="bal-ic">${icon('wallet', 20)}</span><div class="lbl">Tu saldo para compras</div>${infoBtn('saldo').replace('class="info-i"', 'class="info-i on-dark"')}</div>
         <div class="big">${fmt(s.disponible)}</div>
         <div class="bal-bar" aria-hidden="true"><i style="width:${s.asignado ? Math.min(100, s.usado / s.asignado * 100) : 0}%"></i></div>
         <div class="meta"><span>Te asignaron ${fmt(s.asignado)}</span><span>Ya usaste ${fmt(s.usado)}</span></div></div>
       ${s.disponible > 0 ? `<div class="card paycode" style="margin-top:12px" id="paycode">
-        <div class="pc-h">${icon('shield', 22)}<div><div style="font-weight:700;font-size:16px">Pagar con tu saldo</div><div class="tiny muted">Seguro: el código sirve una sola vez</div></div></div>
+        <div class="pc-h">${icon('shield', 22)}<div class="grow"><div style="font-weight:700;font-size:16px">Pagar con tu saldo</div><div class="tiny muted">Seguro: el código sirve una sola vez</div></div>${infoBtn('codigo')}</div>
         <ol class="how">
           <li><span>1</span><div>En el puesto, dile al vendedor qué vas a llevar.</div></li>
           <li><span>2</span><div>Cuando vayas a pagar, toca <strong>Generar código</strong>.</div></li>
@@ -742,7 +879,7 @@
       : `<div class="card center" style="margin-top:12px"><div style="font-size:28px">🎉</div><strong>Ya usaste todo tu saldo</strong>
         <p class="small muted" style="margin:4px 0 0">Puedes seguir comprando: paga en efectivo o por transferencia directamente en el puesto.</p></div>`}
       ${S.me.pin_temporal && S.me.evento.pago_con_pin ? `<div class="alert warn" style="margin-top:12px">${icon('alert', 16)} Te recomendamos cambiar el PIN que recibiste por correo. <a href="#cuenta" id="go-c">Cambiar PIN</a></div>` : ''}
-      <div class="section-title"><h2>${icon('receipt', 20)} Mis compras</h2></div>
+      <div class="section-title"><h2>${icon('receipt', 20)} Mis compras ${infoBtn('compras')}</h2></div>
       <div class="list" id="cl">${compras.filter(v => v.estado !== 'por_confirmar').map(v => ventaItem(v, 'comprador')).join('')
         || emptyState('bag', 'Aún no tienes compras', 'Mira el catálogo para ver qué ofrece cada emprendimiento.', '<button class="btn" id="go-cat" style="margin-top:10px">' + icon('store', 18) + ' Ver catálogo</button>')}</div>`;
     const gc = $('#go-c'); if (gc) gc.onclick = (e) => { e.preventDefault(); go('cuenta'); };
@@ -820,7 +957,7 @@
           <button class="chip ${C.cat ? '' : 'on'}" data-c="">Todas<span class="n">${emps.length}</span></button>
           ${cats.map(c => `<button class="chip ${C.cat === c ? 'on' : ''}" data-c="${esc(c)}">${catEmoji(c)} ${esc(c)}<span class="n">${porCat(c).length}</span></button>`).join('')}
         </div></div>
-      <div class="tiny muted" style="margin:0 2px 4px">${emps.length} emprendimientos · ${nProd} productos · el orden es aleatorio para que todos tengan la misma visibilidad</div>
+      <div class="spread" style="margin:0 2px 4px;gap:8px"><span class="tiny muted">${emps.length} emprendimientos · ${nProd} productos · toca un puesto para ver lo que vende</span>${infoBtn('catalogo')}</div>
       <div id="cat"></div>`;
 
     const empCard = (e, q) => {
@@ -880,7 +1017,7 @@
         <label class="field"><span>Contraseña actual</span><input class="input" type="password" name="actual" required autocomplete="current-password"></label>
         <label class="field"><span>Nueva contraseña</span><input class="input" type="password" name="nueva" minlength="6" required autocomplete="new-password"></label>
         <button class="btn primary">Cambiar contraseña</button></form></div>
-      ${me.es_comprador ? `<div class="card"><h3 style="margin-bottom:4px">PIN de compras</h3><p class="small muted" style="margin:0 0 12px">Lo escribes en el equipo del vendedor para pagar con tu saldo. No lo compartas.</p><form class="stack" id="fp">
+      ${me.es_comprador ? `<div class="card"><h3 style="margin-bottom:4px">PIN de compras ${infoBtn('pin')}</h3><p class="small muted" style="margin:0 0 12px">Lo escribes en el equipo del vendedor para pagar con tu saldo. No lo compartas.</p><form class="stack" id="fp">
         <label class="field"><span>Nuevo PIN (4 dígitos)</span><input class="input pin" name="pin" type="password" inputmode="numeric" maxlength="4" required autocomplete="off"></label>
         <label class="field"><span>Tu contraseña</span><input class="input" type="password" name="clave" required autocomplete="current-password"></label>
         <button class="btn primary">Guardar PIN</button></form></div>` : ''}
@@ -899,8 +1036,8 @@
     const pct = Number(r.saldos.asignado) ? Math.round(Number(r.saldos.usado) / Number(r.saldos.asignado) * 100) : 0;
     const totalF = Number(T.saldo) + Number(T.efectivo) + Number(T.transferencia);
     const max = Math.max(1, ...r.por_emprendimiento.map(e => e.total));
-    main.innerHTML = `<div class="spread" style="margin-bottom:12px"><h2>En vivo</h2><span class="tiny muted">Actualizado ${ftime(r.generado)} · cada 15 s</span></div>
-      ${r.reportes_pendientes ? `<div class="alert bad spread" style="margin-bottom:12px"><span><strong>${r.reportes_pendientes}</strong> ${r.reportes_pendientes === 1 ? 'compra reportada' : 'compras reportadas'} por compradores que no las reconocen.</span><button class="btn sm" id="b-rep">Revisar</button></div>` : ''}
+    main.innerHTML = `<div class="spread" style="margin-bottom:12px"><h2>En vivo ${infoBtn('panel')}</h2><span class="tiny muted">Actualizado ${ftime(r.generado)} · cada 15 s</span></div>
+      ${r.reportes_pendientes ? `<div class="alert bad spread" style="margin-bottom:12px"><span><strong>${r.reportes_pendientes}</strong> ${r.reportes_pendientes === 1 ? 'compra reportada' : 'compras reportadas'} por compradores que no las reconocen. ${infoBtn('reportadas')}</span><button class="btn sm" id="b-rep">Revisar</button></div>` : ''}
       <div class="kpis">
         <div class="kpi"><div class="l">Total vendido</div><div class="v">${fmt(T.total)}</div><div class="d">${T.ventas} ${T.ventas === 1 ? 'venta confirmada' : 'ventas confirmadas'}</div></div>
         <div class="kpi"><div class="l">Compradores atendidos</div><div class="v">${T.compradores}</div><div class="d">de ${r.saldos.compradores} empleados</div></div>
