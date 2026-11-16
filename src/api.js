@@ -16,10 +16,12 @@ async function auth(req) {
   const p = U.readToken(h.startsWith('Bearer ') ? h.slice(7) : '');
   if (!p) fail('Sesión expirada. Ingrese nuevamente.', 401);
   const u = await DB.get().get(`SELECT u.id, u.cedula, u.nombres, u.apellidos, u.email, u.rol, u.activo, u.es_comprador, u.debe_cambiar,
-      e.id AS emprendimiento_id, e.nombre_comercial
+      u.pass_hash, e.id AS emprendimiento_id, e.nombre_comercial
     FROM usuarios u LEFT JOIN emprendimientos e ON e.usuario_id = u.id WHERE u.id = @id`, { id: p.uid });
   if (!u || !u.activo) fail('Usuario inactivo', 401);
-  if (p.v !== undefined && p.v !== 1) fail('Sesión inválida', 401);
+  // La sesión deja de valer si la contraseña se cambió o se reseteó después de emitir el token
+  if (p.pv !== U.passVersion(u.pass_hash)) fail('Sesión expirada. Ingrese nuevamente.', 401);
+  delete u.pass_hash;
   req.user = u;
 }
 const role = (...roles) => async (req) => { if (!roles.includes(req.user.rol)) fail('No autorizado', 403); };
@@ -34,12 +36,13 @@ router.post('/api/login', async (req) => {
   if (f && f.until > Date.now()) fail('Demasiados intentos. Espere 5 minutos.', 429);
   const u = await DB.get().get('SELECT id, pass_hash, activo FROM usuarios WHERE cedula = @c', { c: cedula });
   if (!u || !u.activo || !U.verify(req.body.clave, u.pass_hash)) {
-    const n = (f && f.until <= Date.now() ? 0 : (f?.n || 0)) + 1;
+    // Si hubo un bloqueo y ya venció, el contador vuelve a empezar; si no, se acumula
+    const n = (f && f.until && f.until <= Date.now() ? 0 : (f?.n || 0)) + 1;
     loginFails.set(cedula, { n, until: n >= 8 ? Date.now() + 5 * 60e3 : 0 });
     fail('Cédula o contraseña incorrecta', 401);
   }
   loginFails.delete(cedula);
-  return { token: U.signToken({ uid: u.id, v: 1 }) };
+  return { token: U.signToken({ uid: u.id, pv: U.passVersion(u.pass_hash) }) };
 });
 
 router.get('/api/me', auth, async (req) => {
@@ -66,7 +69,10 @@ router.post('/api/me/clave', auth, async (req) => {
   if (!U.verify(req.body.actual, u.pass_hash)) fail('La contraseña actual no es correcta');
   if (!validClave(req.body.nueva)) fail('La nueva contraseña debe tener al menos 6 caracteres');
   if (req.body.nueva === req.body.actual) fail('La nueva contraseña debe ser distinta');
-  await db.run('UPDATE usuarios SET pass_hash=@h, clave_temporal=NULL, debe_cambiar=0 WHERE id=@id', { id: req.user.id, h: U.hash(req.body.nueva) });
+  const h = U.hash(req.body.nueva);
+  await db.run('UPDATE usuarios SET pass_hash=@h, clave_temporal=NULL, debe_cambiar=0 WHERE id=@id', { id: req.user.id, h });
+  // Las demás sesiones quedan cerradas; esta recibe un token nuevo
+  return { token: U.signToken({ uid: req.user.id, pv: U.passVersion(h) }) };
 });
 
 router.post('/api/me/pin', auth, async (req) => {
@@ -254,8 +260,10 @@ router.get('/api/admin/liquidacion', auth, ADMIN, async () => liquidacionRows())
 function csv(headers, rows) {
   const cell = (v) => {
     if (v === null || v === undefined) return '';
-    const s = typeof v === 'number' ? String(v).replace('.', ',') : String(v);
-    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    let s = typeof v === 'number' ? String(v).replace('.', ',') : String(v);
+    // Evita que Excel interprete como fórmula un texto escrito por usuarios (=, +, -, @, tab, retorno)
+    if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return '﻿' + [headers.map(h => h[1]).join(';'), ...rows.map(r => headers.map(h => cell(r[h[0]])).join(';'))].join('\r\n');
 }
@@ -475,6 +483,13 @@ router.post('/api/super/enviar-accesos', auth, SUPER, async () => {
   for (const u of rows) if (await mailer.queue(u.email, 'Tus datos de acceso a la feria', accesoHtml(u.nombres, u.cedula, u.clave_temporal, u.pin_temporal))) n++;
   const sinCorreo = await db.get(`SELECT COUNT(*) AS n FROM usuarios WHERE activo=1 AND email IS NULL AND (clave_temporal IS NOT NULL OR pin_temporal IS NOT NULL)`);
   return { encolados: n, sin_correo: sinCorreo.n, smtp: mailer.enabled() };
+});
+
+// Borra las contraseñas y PIN temporales guardados en texto plano (una vez entregados los accesos).
+// Los hashes no se tocan: los usuarios siguen ingresando con lo que recibieron.
+router.post('/api/super/limpiar-temporales', auth, SUPER, async () => {
+  const r = await DB.get().run('UPDATE usuarios SET clave_temporal=NULL, pin_temporal=NULL WHERE clave_temporal IS NOT NULL OR pin_temporal IS NOT NULL');
+  return { limpiados: r.changes };
 });
 
 router.get('/api/super/config', auth, SUPER, async () => V.getConfig());

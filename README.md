@@ -58,8 +58,9 @@ Usuarios demo (contraseña `demo123`, PIN `2580`): super admin `0000000000`, adm
 2. Copie la carpeta al servidor, ejecute `npm install --omit=dev` y luego `cp .env.example .env`.
 3. En `.env` configure:
    - `DB_DRIVER=mssql` y los datos de conexión. Con un certificado interno, use `DB_TRUST_CERT=true`.
-   - `APP_SECRET` (una cadena larga aleatoria) y `APP_URL`.
+   - `APP_SECRET` (una cadena aleatoria de 32 caracteres o más) y `APP_URL`.
    - `SUPERADMIN_CEDULA` y `SUPERADMIN_PASSWORD`.
+   - Con `DB_DRIVER=mssql`, el servidor **no arranca** si `APP_SECRET` o `SUPERADMIN_PASSWORD` faltan o tienen los valores de ejemplo.
    - `SMTP_*` para el correo (con Microsoft 365: `smtp.office365.com`, puerto 587, con una cuenta que tenga SMTP AUTH habilitado).
 4. Inicie con `node server.js`. Para que se reinicie solo, use PM2 (`pm2 start server.js --name feria`) o NSSM como servicio de Windows.
 5. Publíquelo detrás de IIS o nginx con **HTTPS**. Recomendado: un nombre interno tipo `feria.suempresa.com` accesible desde el Wi-Fi del evento.
@@ -79,7 +80,7 @@ Usuarios demo (contraseña `demo123`, PIN `2580`): super admin `0000000000`, adm
 1. Ajustes: confirmar la fecha del evento (27/11/2026) y las reglas de saldo, y luego *Recalcular saldos* si cambiaron.
 2. Importar el Excel de emprendedores y luego el de compradores. Revisar las filas con error.
 3. Crear las cuentas de administrador desde *Usuarios*.
-4. Enviar los accesos por correo y, para quien no tenga correo, imprimir las credenciales.
+4. Enviar los accesos por correo y, para quien no tenga correo, imprimir las credenciales. Una vez entregados todos, usar *Ajustes → Borrar credenciales temporales* para que no queden contraseñas ni PIN legibles en la base.
 5. Pedir a los emprendedores que ingresen, cambien su contraseña y carguen sus productos.
 6. Hacer una venta de prueba y anularla.
 7. Durante el evento, tener una mesa de ayuda con un super administrador para resetear contraseñas y PIN.

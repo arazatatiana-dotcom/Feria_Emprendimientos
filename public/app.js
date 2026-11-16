@@ -83,6 +83,7 @@
   }
 
   // ================= Sesión =================
+  function saveToken(t) { if (t) { S.token = t; localStorage.setItem('feria_token', t); } }
   function logout() { S.token = null; S.me = null; localStorage.removeItem('feria_token'); closeModal(); renderLogin(); }
   async function loadMe() { S.me = await api('GET', '/api/me'); return S.me; }
 
@@ -120,8 +121,8 @@
       e.preventDefault(); const f = e.target;
       if (f.nueva.value !== f.rep.value) return toast('Las contraseñas no coinciden', true);
       guard(f.querySelector('button'), async () => {
-        await api('POST', '/api/me/clave', { actual: f.actual.value, nueva: f.nueva.value });
-        toast('Contraseña actualizada'); await start();
+        const r = await api('POST', '/api/me/clave', { actual: f.actual.value, nueva: f.nueva.value });
+        saveToken(r.token); toast('Contraseña actualizada'); await start();
       });
     };
   }
@@ -560,7 +561,7 @@
         <button class="btn primary">Guardar PIN</button></form></div>` : ''}
       <button class="btn danger block" id="b-logout" style="margin-top:16px">Cerrar sesión</button>`;
     $('#b-logout').onclick = logout;
-    $('#fc').onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => { await api('POST', '/api/me/clave', { actual: f.actual.value, nueva: f.nueva.value }); f.reset(); toast('Contraseña actualizada'); }); };
+    $('#fc').onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => { const r = await api('POST', '/api/me/clave', { actual: f.actual.value, nueva: f.nueva.value }); saveToken(r.token); f.reset(); toast('Contraseña actualizada'); }); };
     const fp = $('#fp');
     if (fp) fp.onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => { await api('POST', '/api/me/pin', { pin: f.pin.value, clave: f.clave.value }); f.reset(); await loadMe(); toast('PIN actualizado'); }); };
   };
@@ -724,7 +725,9 @@
       <div class="section-title"><h2>Accesos de compradores</h2></div>
       <div class="card stack"><p class="small" style="margin:0">Envía a cada usuario su contraseña temporal y su PIN. Para quienes no tienen correo, descarga el listado e imprímelo.</p>
         <div class="btns"><button class="btn primary" id="b-send">Enviar accesos por correo</button><button class="btn" id="b-cred">Descargar credenciales (CSV)</button></div>
-        <div class="alert warn small">El archivo de credenciales contiene contraseñas y PIN: compártelo solo con quien entregará los accesos.</div></div>
+        <div class="alert warn small">El archivo de credenciales contiene contraseñas y PIN: compártelo solo con quien entregará los accesos.</div>
+        <p class="small" style="margin:0">Cuando todos hayan recibido sus accesos, borra las copias legibles de las contraseñas y PIN temporales. Los usuarios podrán seguir ingresando con lo que recibieron.</p>
+        <div class="btns"><button class="btn danger" id="b-clean">Borrar credenciales temporales</button></div></div>
       <div class="section-title"><h2>Reglas del evento</h2></div>
       <form class="card stack" id="cf">
         <label class="field"><span>Nombre del evento</span><input class="input" name="nombre_evento" value="${esc(cfg.nombre_evento)}"></label>
@@ -759,6 +762,12 @@
       guard(btn, async () => { const r = await api('POST', '/api/super/enviar-accesos', {}); toast(`${r.encolados} correos en cola · ${r.sin_correo} sin correo${r.smtp ? '' : ' · SMTP sin configurar'}`); });
     };
     $('#b-cred').onclick = (e) => download('/api/admin/export/credenciales', 'credenciales.csv', e.currentTarget);
+    $('#b-clean').onclick = async (e) => {
+      const btn = e.currentTarget;
+      if (!(await ask('Borrar credenciales temporales', '<p>Ya no se podrán reenviar ni descargar las contraseñas y PIN temporales. Para quien los pierda, use <strong>Resetear</strong> en Usuarios.</p>', 'Borrar'))) return;
+      closeModal();
+      guard(btn, async () => { const r = await api('POST', '/api/super/limpiar-temporales', {}); toast(`${r.limpiados} usuarios sin credenciales temporales guardadas`); });
+    };
     $('#cf').onsubmit = (e) => {
       e.preventDefault(); const f = e.target; const body = {};
       f.querySelectorAll('[name]').forEach(i => { body[i.name] = i.value; });

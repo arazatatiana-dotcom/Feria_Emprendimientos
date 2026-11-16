@@ -9,7 +9,22 @@ require('./src/api');
 const { tareasProgramadas } = require('./src/ventas');
 const mailer = require('./src/mailer');
 
+// En producción (SQL Server) no se permiten los valores de desarrollo por defecto
+function validarConfigProduccion() {
+  if (config.db.driver !== 'mssql') return;
+  const errores = [];
+  if (!process.env.APP_SECRET || config.secret.length < 32 || /^cambie-esto/.test(config.secret)) {
+    errores.push('APP_SECRET debe estar definido, tener al menos 32 caracteres y no ser el valor de ejemplo');
+  }
+  if (!process.env.SUPERADMIN_PASSWORD || config.superadmin.password === 'Cambiar.2026') errores.push('SUPERADMIN_PASSWORD debe estar definido y no puede ser el valor de ejemplo');
+  if (errores.length) {
+    console.error('Configuración insegura para producción:\n - ' + errores.join('\n - '));
+    process.exit(1);
+  }
+}
+
 async function main() {
+  validarConfigProduccion();
   const db = await DB.init();
   // Super administrador inicial
   const cedula = U.normCedula(config.superadmin.cedula);

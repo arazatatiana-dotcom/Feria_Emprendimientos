@@ -42,6 +42,10 @@ function readToken(token) {
   } catch { return null; }
 }
 
+// Huella de la contraseña guardada en el token: cambia cada vez que se cambia o resetea la
+// contraseña (el hash lleva sal nueva), y así las sesiones anteriores dejan de valer.
+const passVersion = (passHash) => crypto.createHmac('sha256', config.secret).update(String(passHash || '')).digest('base64url').slice(0, 16);
+
 // ---------- Dinero: siempre en centavos para evitar errores de redondeo ----------
 const cents = (n) => Math.round(Number(n) * 100);
 const money = (c) => Math.round(c) / 100;
@@ -71,4 +75,4 @@ function daysBetween(fromYmd, toYmd) {
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-module.exports = { hash, verify, randomPin, randomClave, signToken, readToken, cents, money, fmt, AppError, fail, normCedula, addHours, addMinutes, daysBetween, esc };
+module.exports = { hash, verify, randomPin, randomClave, signToken, readToken, passVersion, cents, money, fmt, AppError, fail, normCedula, addHours, addMinutes, daysBetween, esc };

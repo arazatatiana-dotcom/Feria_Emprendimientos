@@ -27,11 +27,24 @@ async function checkPin(comprador, pin) {
   if (st && st.until > Date.now()) fail('PIN bloqueado por intentos fallidos. Espere 10 minutos o use la aprobación desde la app del comprador.', 429);
   if (!comprador.pin_hash) fail('El comprador no tiene PIN asignado. Use la aprobación desde su app.');
   if (!verify(String(pin).trim(), comprador.pin_hash)) {
-    const n = (st && st.until <= Date.now() ? 0 : (st?.n || 0)) + 1;
+    // Si hubo un bloqueo y ya venció, el contador vuelve a empezar; si no, se acumula
+    const n = (st && st.until && st.until <= Date.now() ? 0 : (st?.n || 0)) + 1;
     pinFails.set(comprador.id, { n, until: n >= 5 ? Date.now() + 10 * 60e3 : 0 });
+    if (n === 5) await avisarPinBloqueado(comprador.id);
     fail(n >= 5 ? 'PIN incorrecto. Se bloqueó por 10 minutos.' : `PIN incorrecto (intento ${n} de 5)`);
   }
   pinFails.delete(comprador.id);
+}
+
+// Avisa al comprador: si no fue él quien intentó, alguien está probando su PIN
+async function avisarPinBloqueado(compradorId) {
+  try {
+    const u = await DB.get().get('SELECT nombres, email FROM usuarios WHERE id = @id', { id: compradorId });
+    if (!u || !u.email) return;
+    await mailer.queue(u.email, 'Tu PIN fue bloqueado por intentos fallidos', `<h2 style="margin:0 0 10px;font-size:18px">Hola ${esc(u.nombres)},</h2>
+<p>Se escribió mal tu PIN 5 veces seguidas al intentar pagar con tu saldo, así que quedó bloqueado por 10 minutos.</p>
+<p>Si no fuiste tú, cambia tu PIN desde la app (<em>Mi cuenta</em>) y avisa a la mesa de ayuda de la feria.</p>`);
+  } catch (e) { console.error('aviso PIN', e); }
 }
 
 async function loadVenta(q, id) {
@@ -119,6 +132,11 @@ async function writeLines(q, ventaId, lines, pagos) {
   for (const p of pagos) await q.insert('venta_pagos', { venta_id: ventaId, forma: p.forma, monto: p.monto });
 }
 
+// Bloquea la fila de la venta hasta el fin de la transacción. Un UPDATE toma un candado
+// exclusivo tanto en SQL Server como en SQLite: otra transacción que intente bloquear o
+// modificar la misma venta espera, y al continuar lee el estado ya confirmado.
+const lockVenta = (q, id) => q.run('UPDATE ventas SET actualizado = actualizado WHERE id = @id', { id });
+
 const historial = (q, venta_id, usuario_id, accion, detalle) =>
   q.insert('venta_historial', { venta_id, usuario_id, accion, detalle: detalle ? JSON.stringify(detalle) : null, fecha: new Date() });
 
@@ -186,12 +204,13 @@ async function editar(user, id, input) {
   if (actual.estado === 'anulada') fail('Una venta anulada no se puede modificar');
   const comprador = await db.get('SELECT id, pin_hash FROM usuarios WHERE id = @id', { id: actual.comprador_id });
   const nuevoSaldo = cents((input.pagos || []).filter(p => p.forma === 'saldo').reduce((a, p) => a + Number(p.monto || 0), 0));
-  const subeSaldo = nuevoSaldo > cents(actual.total_saldo);
   let porPin = false;
   if (nuevoSaldo > 0 && input.pin) { await checkPin(comprador, input.pin); porPin = true; }
 
   await db.tx(async (q) => {
-    const v = await loadVenta(q, id); // releer dentro de la transacción
+    await lockVenta(q, id);
+    const v = await loadVenta(q, id); // releer dentro de la transacción, ya bloqueada
+    if (!v) fail('Venta no encontrada', 404);
     if (v.estado === 'anulada') fail('La venta fue anulada mientras la editaba');
     await reverseEffects(q, v);
     const { lines, pagos, totalC, saldoC } = await buildVenta(q, emp.id, input);
@@ -200,7 +219,7 @@ async function editar(user, id, input) {
     let estado = v.estado, confirmada_por = v.confirmada_por, expira = v.expira_confirmacion ? new Date(v.expira_confirmacion) : null;
     if (saldoC === 0) { estado = 'confirmada'; confirmada_por = 'no_requiere'; expira = null; }
     else if (porPin) { estado = 'confirmada'; confirmada_por = 'pin'; expira = null; }
-    else if (subeSaldo || v.estado === 'por_confirmar') {
+    else if (saldoC > cents(v.total_saldo) || v.estado === 'por_confirmar') {
       estado = 'por_confirmar'; confirmada_por = null; expira = addMinutes(now, Number(cfg.minutos_confirmacion));
     }
     const ent = limiteEntrega(cfg, v.creado, lines, saldoC);
@@ -228,26 +247,32 @@ async function editar(user, id, input) {
 }
 
 // ---------- Anular ----------
-async function anular(actor, id, motivo, { sistema = false } = {}) {
+// `condicion(v)`: solo para anulaciones automáticas; se evalúa con la venta ya bloqueada,
+// para no anular una venta que cambió (se confirmó, se entregó o se editó) desde que se consultó.
+async function anular(actor, id, motivo, { sistema = false, condicion = null } = {}) {
   const db = DB.get();
   if (!sistema) {
     if (!motivo || String(motivo).trim().length < 3) fail('Indique el motivo de la anulación');
   }
+  const permitido = (v) => sistema || actor.rol === 'superadmin' || v.emprendedor_usuario_id === actor.id
+    || (v.comprador_id === actor.id && v.estado === 'por_confirmar');
   const v0 = await loadVenta(db, id);
   if (!v0) fail('Venta no encontrada', 404);
-  if (!sistema && actor.rol !== 'superadmin' && v0.emprendedor_usuario_id !== actor.id && !(v0.comprador_id === actor.id && v0.estado === 'por_confirmar')) {
-    fail('No tiene permiso para anular esta venta', 403);
-  }
+  if (!permitido(v0)) fail('No tiene permiso para anular esta venta', 403);
   const done = await db.tx(async (q) => {
+    await lockVenta(q, id);
     const v = await loadVenta(q, id);
-    if (v.estado === 'anulada') return false;
+    if (!v || v.estado === 'anulada') return 'anulada';
+    if (condicion && !condicion(v)) return 'cambio';
+    if (!permitido(v)) fail('La venta cambió de estado y ya no puede anularla', 403);
     await reverseEffects(q, v);
-    await q.run(`UPDATE ventas SET estado='anulada', motivo_anulacion=@m, anulada_por=@a, actualizado=@now WHERE id=@id`,
+    await q.run(`UPDATE ventas SET estado='anulada', motivo_anulacion=@m, anulada_por=@a, actualizado=@now WHERE id=@id AND estado <> 'anulada'`,
       { id, m: String(motivo).slice(0, 300), a: actor ? actor.id : null, now: new Date() });
     await historial(q, id, actor ? actor.id : null, sistema ? 'anulada_automatica' : 'anulada', { motivo });
-    return true;
+    return 'ok';
   });
-  if (!done) fail('La venta ya estaba anulada');
+  if (done === 'anulada') fail('La venta ya estaba anulada');
+  if (done === 'cambio') fail('La venta cambió de estado; no se anuló');
   const v = await loadVenta(db, id);
   const html = mailer.ventaHtml(v, 'Venta anulada', `Motivo: ${esc(motivo)}`);
   await mailer.queue(v.comprador_email, `Venta anulada N.º ${v.id} - ${v.nombre_comercial}`, html);
@@ -289,7 +314,9 @@ async function marcarEntregado(user, id) {
   if (v.estado !== 'confirmada') fail('Solo se pueden entregar ventas confirmadas');
   if (v.estado_entrega === 'entregado') fail('La venta ya está entregada');
   await db.tx(async (q) => {
-    await q.run(`UPDATE ventas SET estado_entrega='entregado', entregado_en=@now, actualizado=@now WHERE id=@id`, { id, now: new Date() });
+    const r = await q.run(`UPDATE ventas SET estado_entrega='entregado', entregado_en=@now, actualizado=@now
+      WHERE id=@id AND estado='confirmada' AND estado_entrega='pendiente'`, { id, now: new Date() });
+    if (!r.changes) fail('La venta cambió de estado; actualice e intente de nuevo');
     await historial(q, id, user.id, 'entregada', null);
   });
   const nv = await loadVenta(db, id);
@@ -307,7 +334,10 @@ async function tareasProgramadas() {
   const now = new Date();
   const vencidasConf = await db.query(`SELECT id FROM ventas WHERE estado='por_confirmar' AND expira_confirmacion < @now`, { now });
   for (const r of vencidasConf) {
-    try { await anular(null, r.id, 'El comprador no confirmó el pago con saldo a tiempo', { sistema: true }); } catch (e) { /* ya procesada */ }
+    try {
+      await anular(null, r.id, 'El comprador no confirmó el pago con saldo a tiempo', { sistema: true,
+        condicion: (v) => v.estado === 'por_confirmar' && v.expira_confirmacion && new Date(v.expira_confirmacion) < new Date() });
+    } catch (e) { /* ya procesada o cambió de estado */ }
   }
   const vencidasEnt = await db.query(`SELECT id FROM ventas WHERE estado='confirmada' AND estado_entrega='pendiente'
     AND fecha_limite_entrega IS NOT NULL AND fecha_limite_entrega < @now`, { now });
@@ -315,7 +345,8 @@ async function tareasProgramadas() {
     const admins = await db.query(`SELECT email FROM usuarios WHERE rol IN ('admin','superadmin') AND activo=1 AND email IS NOT NULL`);
     for (const r of vencidasEnt) {
       try {
-        const v = await anular(null, r.id, 'Pedido con saldo no entregado dentro del plazo máximo', { sistema: true });
+        const v = await anular(null, r.id, 'Pedido con saldo no entregado dentro del plazo máximo', { sistema: true,
+          condicion: (x) => x.estado === 'confirmada' && x.estado_entrega === 'pendiente' && x.fecha_limite_entrega && new Date(x.fecha_limite_entrega) < new Date() });
         for (const a of admins) await mailer.queue(a.email, `Anulación automática N.º ${v.id} (entrega vencida)`, mailer.ventaHtml(v, 'Venta anulada por entrega vencida', `Emprendimiento: ${esc(v.nombre_comercial)}`));
       } catch (e) { /* ya procesada */ }
     }
