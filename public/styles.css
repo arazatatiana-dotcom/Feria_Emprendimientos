@@ -332,6 +332,14 @@ a.help-opt { text-decoration: none; }
 .cat-btn.on .cat-ic { background: var(--brand); box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--accent); }
 .cat-btn.on .cat-l { color: var(--brand); font-weight: 700; }
 
+/* Pantalla inicial del catálogo: cuadrícula de categorías (lo primero que se ve) */
+.cat-home { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 14px; }
+.cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 4px; margin: 18px 0 6px; }
+.cat-grid .cat-btn { width: auto; }
+.cat-grid .cat-btn .cat-l { font-size: 12.5px; max-width: 84px; -webkit-line-clamp: 3; }
+@media (min-width: 640px) { .cat-grid { grid-template-columns: repeat(6, 1fr); } }
+.cat-back { margin-bottom: 10px; }
+
 /* Catálogo: categoría → emprendimiento → productos */
 .cat-tools { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 4px 0 10px; }
 .cat-tools .chip .n { opacity: .6; margin-left: 4px; font-variant-numeric: tabular-nums; }

@@ -402,7 +402,7 @@
     } else if (r.includes('comp')) {
       st.push({ tab: 'inicio', sel: '.balance', t: '💰 Este es tu saldo', d: 'Es el dinero que tienes para comprar en la feria.' });
       st.push({ tab: 'inicio', sel: '#b-code', t: '🔐 Para pagar, toca aquí', d: S.me.sesion_limitada ? 'Te pedimos tu PIN y te sale un número. Escríbelo tú en el celular del vendedor.' : 'Te sale un número. Escríbelo tú en el celular del vendedor.' });
-      st.push({ tab: 'catalogo', sel: '.cat-tools', t: '🛍️ Mira qué venden', d: 'Toca una categoría o escribe lo que buscas.' });
+      st.push({ tab: 'catalogo', sel: '.cat-grid, .cat-row', t: '🛍️ Mira qué venden', d: 'Toca una categoría para ver sus puestos.' });
     }
     st.push({ sel: '#b-help', t: '❓ ¿Tienes dudas?', d: 'Toca este botón cuando quieras para ver este recorrido otra vez. Y si ves una "i", tócala: te explica esa parte.' });
     return st;
@@ -1164,18 +1164,15 @@
     const data = await api('GET', '/api/catalogo');
     const hoy = new Date().toISOString().slice(0, 10);
     const emps = seededShuffle(data.emprendimientos, `${S.me.id}|${hoy}`);
-    const C = S.cache.cat || (S.cache.cat = { q: '', cat: '', open: new Set() });
+    // cat: null = pantalla inicial con los botones de categoría; '' = todos los puestos; 'Comida'… = una categoría
+    const C = S.cache.cat || (S.cache.cat = { q: '', cat: null, open: new Set() });
+    C.cat = null; C.q = ''; // al entrar al catálogo, lo primero que se ve son las categorías
     const porCat = (c) => emps.filter(e => e.categoria === c);
     const cats = data.categorias.filter(c => porCat(c).length);
     const nProd = emps.reduce((a, e) => a + e.productos.length, 0);
-    main.innerHTML = `<div class="cat-tools">
-        <div class="input-ic">${icon('search', 18)}<input class="input" id="cq" placeholder="Buscar producto o emprendimiento" value="${esc(C.q)}" autocomplete="off" inputmode="search"></div>
-        <div class="cat-row" id="cc" role="group" aria-label="Categorías">
-          ${[['', 'Todas', emps.length], ...cats.map(c => [c, c, porCat(c).length])].map(([v, l, n]) => `<button type="button" class="cat-btn ${C.cat === v ? 'on' : ''}" data-c="${esc(v)}" aria-pressed="${C.cat === v}">
-            <span class="cat-ic">${catIcon(v)}<span class="cat-n">${n}</span></span><span class="cat-l">${esc(l)}</span></button>`).join('')}
-        </div></div>
-      <div class="spread" style="margin:0 2px 4px;gap:8px"><span class="tiny muted">${emps.length} emprendimientos · ${nProd} productos · toca un puesto para ver lo que vende</span>${infoBtn('catalogo')}</div>
-      <div id="cat"></div>`;
+    const btnCat = ([v, l, n]) => `<button type="button" class="cat-btn ${C.cat === v ? 'on' : ''}" data-c="${esc(v)}" aria-pressed="${C.cat === v}">
+      <span class="cat-ic">${catIcon(v)}<span class="cat-n">${n}</span></span><span class="cat-l">${esc(l)}</span></button>`;
+    const buscador = `<div class="input-ic">${icon('search', 18)}<input class="input" id="cq" placeholder="Buscar producto o emprendimiento" value="${esc(C.q)}" autocomplete="off" inputmode="search"></div>`;
 
     const empCard = (e, q) => {
       const nameHit = q && norm(e.nombre_comercial).includes(q);
@@ -1215,13 +1212,40 @@
         paint();
       }; });
     };
-    $('#cq').oninput = debounce(() => { C.q = $('#cq').value; paint(); }, 200);
-    $('#cc').querySelectorAll('[data-c]').forEach(b => { b.onclick = () => {
-      C.cat = b.dataset.c;
-      $('#cc').querySelectorAll('[data-c]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
-      paint(); window.scrollTo(0, 0);
-    }; });
-    paint();
+    // Dos pantallas: inicio (cuadrícula de categorías) y lista (puestos de la categoría elegida o búsqueda)
+    const esInicio = () => C.cat === null && !C.q.trim();
+    const render = (enfocarBusqueda) => {
+      if (esInicio()) {
+        main.innerHTML = `<div class="cat-home">
+          <div class="spread" style="align-items:flex-start"><div><h2 style="margin:0">¿Qué quieres ver?</h2><div class="small muted" style="margin-top:2px">Toca una categoría</div></div>${infoBtn('catalogo')}</div>
+          <div class="cat-grid" id="cc" role="group" aria-label="Categorías">
+            ${[...cats.map(c => [c, c, porCat(c).length]), ['', 'Ver todos', emps.length]].map(btnCat).join('')}
+          </div>
+          <div class="or-sep"><span>o escribe lo que buscas</span></div>
+          ${buscador}
+          <div class="tiny muted center" style="margin-top:10px">${emps.length} emprendimientos · ${nProd} productos</div></div>`;
+      } else {
+        main.innerHTML = `<div class="cat-tools">
+            <button type="button" class="btn sm cat-back" id="cat-back">← Categorías</button>
+            ${buscador}
+            <div class="cat-row" id="cc" role="group" aria-label="Categorías">
+              ${[['', 'Todos', emps.length], ...cats.map(c => [c, c, porCat(c).length])].map(btnCat).join('')}
+            </div></div>
+          <div class="tiny muted" style="margin:0 2px 4px">Toca un puesto para ver lo que vende</div>
+          <div id="cat"></div>`;
+        paint();
+        $('#cat-back').onclick = () => { C.cat = null; C.q = ''; render(); window.scrollTo(0, 0); };
+      }
+      const cq = $('#cq');
+      cq.oninput = debounce(() => {
+        const antes = esInicio();
+        C.q = cq.value;
+        if (antes !== esInicio()) render(true); else if (!esInicio()) paint();
+      }, 250);
+      if (enfocarBusqueda) { cq.focus(); cq.setSelectionRange(cq.value.length, cq.value.length); }
+      $('#cc').querySelectorAll('[data-c]').forEach(b => { b.onclick = () => { C.cat = b.dataset.c; render(); window.scrollTo(0, 0); }; });
+    };
+    render();
   };
 
   // ---------- Mi cuenta ----------
