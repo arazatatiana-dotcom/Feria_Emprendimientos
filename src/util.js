@@ -47,6 +47,10 @@ function readToken(token) {
 // contraseña (el hash lleva sal nueva), y así las sesiones anteriores dejan de valer.
 const passVersion = (passHash) => crypto.createHmac('sha256', config.secret).update(String(passHash || '')).digest('base64url').slice(0, 16);
 
+// Clave de búsqueda del código de pago: permite encontrar al comprador por su código sin probar
+// cada hash (sería lento con cientos de códigos), y sin guardar el código legible en la base.
+const codigoClave = (codigo) => crypto.createHmac('sha256', config.secret).update('codigo-pago:' + String(codigo)).digest('hex').slice(0, 40);
+
 // ---------- Dinero: siempre en centavos para evitar errores de redondeo ----------
 const cents = (n) => Math.round(Number(n) * 100);
 const money = (c) => Math.round(c) / 100;
@@ -76,4 +80,4 @@ function daysBetween(fromYmd, toYmd) {
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-module.exports = { hash, verify, randomPin, randomCodigo, randomClave, signToken, readToken, passVersion, cents, money, fmt, AppError, fail, normCedula, addHours, addMinutes, daysBetween, esc };
+module.exports = { hash, verify, randomPin, randomCodigo, randomClave, signToken, readToken, passVersion, codigoClave, cents, money, fmt, AppError, fail, normCedula, addHours, addMinutes, daysBetween, esc };

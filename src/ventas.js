@@ -10,7 +10,7 @@
  */
 const DB = require('./db');
 const mailer = require('./mailer');
-const { cents, money, fail, verify, hash, randomCodigo, addHours, addMinutes, esc, fmt } = require('./util');
+const { cents, money, fail, verify, hash, randomCodigo, codigoClave, addHours, addMinutes, esc, fmt } = require('./util');
 
 const FORMAS = ['saldo', 'efectivo', 'transferencia'];
 
@@ -68,15 +68,52 @@ async function generarCodigoPago(usuarioId) {
   if (t && Date.now() - t < 5000) fail('Espera unos segundos antes de generar otro código', 429);
   ultimoCodigo.set(usuarioId, Date.now());
   const cfg = await getConfig();
-  const codigo = randomCodigo();
   const now = new Date();
   const expira = addMinutes(now, Math.min(30, Math.max(1, Number(cfg.minutos_codigo_pago) || 5)));
+  // El código también identifica al comprador: no puede haber dos códigos vigentes iguales
+  let codigo, clave;
+  for (let i = 0; i < 10; i++) {
+    codigo = randomCodigo(); clave = codigoClave(codigo);
+    const dup = await DB.get().get('SELECT id FROM codigos_pago WHERE codigo_clave = @k AND usado_en IS NULL AND expira > @now AND usuario_id <> @u',
+      { k: clave, now, u: usuarioId });
+    if (!dup) break;
+  }
   await DB.get().tx(async (q) => {
     // Solo un código vigente por comprador: los anteriores dejan de servir
     await q.run('UPDATE codigos_pago SET usado_en = @now WHERE usuario_id = @u AND usado_en IS NULL', { u: usuarioId, now });
-    await q.insert('codigos_pago', { usuario_id: usuarioId, codigo_hash: hash(codigo), expira, creado: now });
+    await q.insert('codigos_pago', { usuario_id: usuarioId, codigo_hash: hash(codigo), codigo_clave: clave, expira, creado: now });
   });
   return { codigo, expira: expira.toISOString() };
+}
+
+// El vendedor escribe el código y la app encuentra al comprador (sin buscar por nombre).
+// Protección contra quien intente adivinar códigos: 5 fallos seguidos bloquean 10 minutos a ese
+// vendedor y se avisa a los administradores. El código no se gasta aquí: se gasta al registrar la venta.
+const busquedaFails = new Map();
+async function compradorPorCodigo(vendedor, codigo) {
+  const st = busquedaFails.get(vendedor.id);
+  if (st && st.until > Date.now()) fail('Demasiados códigos incorrectos. Espera 10 minutos o busca al comprador por su nombre.', 429);
+  const val = String(codigo ?? '').trim();
+  if (!/^\d{6}$/.test(val)) fail('El código tiene 6 números');
+  const db = DB.get();
+  const row = await db.get(`SELECT c.usuario_id, c.codigo_hash FROM codigos_pago c
+    WHERE c.codigo_clave = @k AND c.usado_en IS NULL AND c.expira > @now`, { k: codigoClave(val), now: new Date() });
+  if (!row || !verify(val, row.codigo_hash) || row.usuario_id === vendedor.id) {
+    const n = (st && st.until && st.until <= Date.now() ? 0 : (st?.n || 0)) + 1;
+    busquedaFails.set(vendedor.id, { n, until: n >= 5 ? Date.now() + 10 * 60e3 : 0 });
+    if (n === 5) {
+      const html = `<p>El emprendedor <strong>${esc(vendedor.nombres + ' ' + vendedor.apellidos)}</strong> escribió 5 códigos de pago incorrectos seguidos. Quedó bloqueado 10 minutos para buscar por código.</p><p>Puede ser un error al escribir, pero conviene revisarlo.</p>`;
+      for (const a of await adminEmails(db)) await mailer.queue(a, 'Aviso: varios códigos de pago incorrectos', html);
+    }
+    fail(n >= 5 ? 'Demasiados códigos incorrectos. Se bloqueó por 10 minutos.' : 'Ese código no es válido o ya venció. Pide al comprador que genere uno nuevo.');
+  }
+  busquedaFails.delete(vendedor.id);
+  const u = await db.get('SELECT id, cedula, nombres, apellidos, es_comprador, saldo_asignado, saldo_usado, pin_hash FROM usuarios WHERE id = @id AND activo = 1', { id: row.usuario_id });
+  if (!u) fail('Comprador no encontrado');
+  return {
+    id: u.id, cedula: u.cedula, nombre: `${u.nombres} ${u.apellidos}`.trim(), tiene_pin: !!u.pin_hash,
+    saldo_disponible: u.es_comprador ? money(cents(u.saldo_asignado) - cents(u.saldo_usado)) : 0,
+  };
 }
 
 // Avisa al comprador: si no fue él quien intentó, alguien está probando su PIN
@@ -145,7 +182,7 @@ async function applyEffects(q, compradorId, lines, saldoC) {
     const r = await q.run('UPDATE productos SET stock = stock - @c WHERE id = @id AND stock >= @c', { c: l.cantidad, id: l.producto_id });
     if (!r.changes) {
       const p = await q.get('SELECT stock FROM productos WHERE id = @id', { id: l.producto_id });
-      fail(`Stock insuficiente de "${l.descripcion}" (disponible: ${p ? p.stock : 0}). Puede marcarlo como entrega posterior.`);
+      fail(`No te quedan suficientes "${l.descripcion}" (quedan ${p ? p.stock : 0}). Puedes marcarlo como "Lo entrego otro día".`);
     }
   }
   if (saldoC > 0) {
@@ -468,4 +505,4 @@ async function tareasProgramadas() {
 }
 
 module.exports = { crear, editar, anular, confirmar, marcarEntregado, loadVenta, getConfig, tareasProgramadas, FORMAS,
-  generarCodigoPago, reportar, resolverReporte };
+  generarCodigoPago, compradorPorCodigo, reportar, resolverReporte };

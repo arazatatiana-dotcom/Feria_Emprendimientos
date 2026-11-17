@@ -40,6 +40,12 @@ const emprendedor = async (req) => { if (!req.user.emprendimiento_id) fail('Solo
 const ADMIN = role('admin', 'superadmin');
 const SUPER = role('superadmin');
 
+// Datos públicos para la pantalla de ingreso (antes de iniciar sesión): nombre del evento y WhatsApp de ayuda
+router.get('/api/publico', async () => {
+  const cfg = await V.getConfig();
+  return { nombre_evento: cfg.nombre_evento, whatsapp: String(cfg.whatsapp_soporte || '').replace(/\D/g, '') };
+});
+
 const loginFails = new Map();
 router.post('/api/login', async (req) => {
   const cedula = U.normCedula(req.body.cedula);
@@ -72,7 +78,8 @@ router.get('/api/me', auth, async (req) => {
     por_confirmar: pendientes.n,
     ultima_compra_saldo: ultima && ultima.id ? Number(ultima.id) : 0,
     evento: { nombre: cfg.nombre_evento, fecha: cfg.fecha_evento, hora: cfg.hora_evento, minutos_confirmacion: Number(cfg.minutos_confirmacion),
-      pago_con_pin: cfg.pago_con_pin !== '0', minutos_codigo_pago: Number(cfg.minutos_codigo_pago) || 5 },
+      pago_con_pin: cfg.pago_con_pin !== '0', minutos_codigo_pago: Number(cfg.minutos_codigo_pago) || 5,
+      whatsapp: String(cfg.whatsapp_soporte || '').replace(/\D/g, '') },
     categorias: categoriasDe(cfg),
     correo_activo: mailer.enabled(),
   };
@@ -200,6 +207,8 @@ router.put('/api/mi-emprendimiento', auth, emprendedor, async (req) => {
   await DB.get().run('UPDATE emprendimientos SET categoria=@c WHERE id=@id', { c: categoria, id: req.user.emprendimiento_id });
   return { categoria };
 });
+
+router.post('/api/compradores/por-codigo', auth, emprendedor, async (req) => V.compradorPorCodigo(req.user, req.body.codigo));
 
 router.get('/api/compradores', auth, emprendedor, async (req) => {
   const q = String(req.query.q || '').trim();
@@ -557,6 +566,7 @@ router.put('/api/super/config', auth, SUPER, async (req) => {
     if (k === 'categorias' && val.length > 500) fail('La lista de categorías es demasiado larga');
     if (k === 'pago_con_pin' && !['0', '1'].includes(val)) fail('Valor inválido: pago_con_pin');
     if (k === 'minutos_codigo_pago' && !(Number(val) >= 1 && Number(val) <= 30)) fail('El código de pago debe durar entre 1 y 30 minutos');
+    if (k === 'whatsapp_soporte' && val && !/^\+?[\d\s-]{8,20}$/.test(val)) fail('WhatsApp de soporte: escriba solo números, con código de país (ej. 593991234567)');
     await db.tx(async (q) => {
       await q.run('DELETE FROM config WHERE clave=@k', { k });
       await q.insert('config', { clave: k, valor: val });

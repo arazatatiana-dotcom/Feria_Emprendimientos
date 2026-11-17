@@ -109,15 +109,32 @@
   // ================= Módulos de Node simulados =================
   const SRC = {};
   let SQL = null;
-  const persist = { inTx: false, timer: null, db: null };
+  const persist = { inTx: false, timer: null, db: null, last: null };
   function saveSoon() {
     clearTimeout(persist.timer);
     persist.timer = setTimeout(() => {
       if (!persist.db) return;
       if (persist.inTx) return saveSoon();
-      try { localStorage.setItem(STORE_KEY, Buf.from(persist.db.export()).toString('base64')); } catch (e) { console.warn('demo: no se pudo guardar', e); }
+      try {
+        const data = Buf.from(persist.db.export()).toString('base64');
+        if (data === persist.last) return; // sin cambios: no se escribe (evita avisar a otras pestañas sin motivo)
+        persist.last = data;
+        localStorage.setItem(STORE_KEY, data);
+      } catch (e) { console.warn('demo: no se pudo guardar', e); }
     }, 250);
   }
+  // Dos pestañas de la demo abiertas: cada una tiene su copia en memoria y la última en guardar
+  // pisaría a la otra. Cuando otra pestaña guarda, esta se recarga para usar los datos nuevos
+  // (si está en segundo plano, al volver a ella).
+  window.addEventListener('storage', (e) => {
+    if (e.key !== STORE_KEY || e.newValue === persist.last) return;
+    if (document.hidden) {
+      const alVolver = () => { if (!document.hidden) location.reload(); };
+      document.addEventListener('visibilitychange', alVolver);
+    } else {
+      location.reload();
+    }
+  });
   function loadSaved() {
     try { const s = localStorage.getItem(STORE_KEY); return s ? Buf.from(s, 'base64') : null; } catch (_) { return null; }
   }
@@ -242,6 +259,7 @@
     ]);
     SQL = await window.initSqlJs({ locateFile: (f) => CDN.sqljs + f });
     let bytes = loadSaved();
+    try { persist.last = localStorage.getItem(STORE_KEY); } catch (_) { /* sin almacenamiento */ }
     if (!bytes) { bytes = await seed(); }
     const load = makeRegistry(baseBuiltins(makeSqliteShim(bytes, { autosave: true })));
     const DB = load('src/db.js');
@@ -288,7 +306,8 @@
       let b = document.getElementById('demo-banner');
       if (!b) {
         b = document.createElement('div'); b.id = 'demo-banner';
-        b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;padding:8px 12px;font:13px/1.4 system-ui,sans-serif;text-align:center;box-shadow:0 -2px 8px rgba(0,0,0,.15)';
+        b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:40;padding:8px 12px;font:13px/1.4 system-ui,sans-serif;text-align:center;box-shadow:0 -2px 8px rgba(0,0,0,.15)';
+        // z-index 40: encima de la barra de pestañas, pero debajo de las ventanas (50) para no tapar sus botones
         document.body.appendChild(b);
         document.body.style.paddingBottom = '64px';
       }

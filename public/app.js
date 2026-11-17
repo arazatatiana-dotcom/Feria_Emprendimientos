@@ -56,6 +56,77 @@
     clearTimeout(toast._t); toast._t = setTimeout(() => { t.className = ''; }, err ? 4500 : 2600);
   }
 
+  // ================= Letra grande =================
+  // Agranda toda la app (textos y botones). Se recuerda en el celular.
+  const LETRA_KEY = 'feria_letra';
+  try { if (localStorage.getItem(LETRA_KEY)) document.documentElement.classList.add('big-text'); } catch (_) { /* sin almacenamiento */ }
+  const letraGrande = () => document.documentElement.classList.contains('big-text');
+  function setLetra(on) {
+    document.documentElement.classList.toggle('big-text', !!on);
+    try { if (on) localStorage.setItem(LETRA_KEY, '1'); else localStorage.removeItem(LETRA_KEY); } catch (_) { /* sin almacenamiento */ }
+  }
+
+  // ================= Confirmación con vibración y sonido =================
+  // Para saber que algo salió bien sin tener que leer la pantalla
+  function feedbackOk() {
+    try { if (navigator.vibrate) navigator.vibrate([70, 50, 70]); } catch (_) { /* no disponible */ }
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = feedbackOk.ctx || (feedbackOk.ctx = new Ctx());
+      [[880, 0], [1320, 0.12]].forEach(([f, t]) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f; o.type = 'sine';
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.18);
+        o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.2);
+      });
+    } catch (_) { /* sin sonido */ }
+  }
+
+  // ================= WhatsApp de la mesa de ayuda =================
+  const PUB = { whatsapp: '' };
+  const waNumero = () => (S.me && S.me.evento.whatsapp) || PUB.whatsapp;
+  function waLink() {
+    const me = S.me;
+    const txt = me ? `Hola, soy ${me.nombres} ${me.apellidos} (cédula ${me.cedula}). Necesito ayuda con la app de la feria.` : 'Hola, necesito ayuda para entrar a la app de la feria.';
+    return `https://wa.me/${waNumero()}?text=${encodeURIComponent(txt)}`;
+  }
+  const waBtn = (cls = 'btn block') => waNumero() ? `<a class="${cls} wa-btn" href="${waLink()}" target="_blank" rel="noopener">💬 Escribir a la mesa de ayuda por WhatsApp</a>` : '';
+
+  // ================= Instalar como app =================
+  // Android/Chrome ofrece instalar con un toque; en iPhone hay que hacerlo desde "Compartir".
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; });
+  window.addEventListener('appinstalled', () => { installEvt = null; toast('¡Listo! La feria ya está en tu pantalla de inicio'); });
+  const esInstalada = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const esIphone = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { /* sin instalación: la app funciona igual */ }));
+  }
+  async function instalarApp() {
+    if (esInstalada()) return toast('Ya tienes la app en tu celular');
+    if (installEvt) {
+      installEvt.prompt();
+      try { await installEvt.userChoice; } catch (_) { /* cancelado */ }
+      installEvt = null;
+      return;
+    }
+    const compartir = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-5px"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+    const pasos = esIphone()
+      ? [`Abre esta página en <strong>Safari</strong> (la brújula azul).`, `Toca el botón <strong>Compartir</strong> ${compartir} (abajo, en el centro).`,
+        'Baja y toca <strong>"Agregar a inicio"</strong>.', 'Toca <strong>"Agregar"</strong> arriba a la derecha.']
+      : ['Abre esta página en <strong>Chrome</strong>.', 'Toca los <strong>tres puntos ⋮</strong> (arriba a la derecha).',
+        'Toca <strong>"Instalar app"</strong> o <strong>"Agregar a la pantalla principal"</strong>.', 'Confirma con <strong>"Instalar"</strong>.'];
+    const b = modal('📲 Tener la feria en tu celular', `<div class="stack">
+      <p style="margin:0">Así la abres con un toque, como cualquier app, sin buscar el enlace.</p>
+      <ol class="how">${pasos.map((t, i) => `<li><span>${i + 1}</span><div>${t}</div></li>`).join('')}</ol>
+      <div class="install-preview"><img src="icons/icon-192.png" alt="" width="56" height="56"><div><strong>Feria</strong><div class="tiny muted">Así se verá en tu pantalla</div></div></div>
+      <button class="btn primary block lg" id="in-ok">Entendido</button></div>`);
+    $('#in-ok', b).onclick = closeModal;
+  }
+
   // ================= API =================
   const S = { token: localStorage.getItem('feria_token'), me: null, tab: null, cache: {} };
   async function api(method, path, body) {
@@ -102,7 +173,7 @@
   const closeModal = () => { $('#modal-root').innerHTML = ''; };
   function ask(title, html, okLabel = 'Aceptar', danger) {
     return new Promise((res) => {
-      const b = modal(title, `${html}<div class="btns" style="margin-top:16px"><button class="btn grow" id="q-no">Cancelar</button><button class="btn grow ${danger ? 'danger solid' : 'primary'}" id="q-ok">${okLabel}</button></div>`);
+      const b = modal(title, `${html}<div class="btns" style="margin-top:16px"><button class="btn grow" id="q-no">Volver</button><button class="btn grow ${danger ? 'danger solid' : 'primary'}" id="q-ok">${okLabel}</button></div>`);
       $('#q-no', b).onclick = () => { closeModal(); res(null); };
       $('#q-ok', b).onclick = () => { const vals = {}; b.querySelectorAll('[name]').forEach(i => { vals[i.name] = i.type === 'checkbox' ? i.checked : i.value; }); res(vals); };
       const f = b.querySelector('input,textarea'); if (f) setTimeout(() => f.focus(), 50);
@@ -148,14 +219,28 @@
       <label class="field"><span>Contraseña</span>${pwField('clave', 'current-password')}</label>
       <button class="btn primary block lg" type="submit">Ingresar</button>
       <p class="tiny muted center" style="margin:6px 0 0">¿Olvidaste tu contraseña? Acércate a la <strong>mesa de ayuda</strong> del evento.<br>Es la misma cédula con la que te registraron.</p>
+      <div id="login-wa"></div>
+      <button type="button" class="btn ghost block" id="b-letra-login">🔠 ${letraGrande() ? 'Letra normal' : 'Letra más grande'}</button>
     </form></div>`;
     bindPwToggles($('#f-login'));
+    $('#b-letra-login').onclick = () => { setLetra(!letraGrande()); renderLogin(); };
+    // Cédula recordada: al volver solo hay que escribir la contraseña
+    try {
+      const ced = localStorage.getItem('feria_cedula');
+      if (ced) { $('#f-login').cedula.value = ced; setTimeout(() => { const c = $('#f-login'); if (c) c.clave.focus(); }, 50); }
+    } catch (_) { /* sin almacenamiento */ }
+    // WhatsApp de ayuda (si está configurado), también antes de iniciar sesión
+    fetch('/api/publico').then(r => r.json()).then(p => {
+      PUB.whatsapp = p.whatsapp || '';
+      const box = $('#login-wa'); if (box) box.innerHTML = waBtn('btn block');
+    }).catch(() => { /* sin conexión: no se muestra */ });
     $('#f-login').onsubmit = (e) => {
       e.preventDefault();
       const f = e.target;
       guard(f.querySelector('button'), async () => {
         const r = await api('POST', '/api/login', { cedula: f.cedula.value.trim(), clave: f.clave.value });
         S.token = r.token; localStorage.setItem('feria_token', r.token);
+        try { localStorage.setItem('feria_cedula', f.cedula.value.trim()); } catch (_) { /* sin almacenamiento */ }
         await start();
       });
     };
@@ -274,9 +359,9 @@
     }
     if (r.includes('emp')) {
       st.push({ tab: 'productos', sel: '#b-add', t: '📦 Primero, tus productos', d: 'Toca "+ Agregar" y escribe el nombre, el precio y cuántos tienes.' });
-      st.push({ tab: 'vender', sel: '#q-comp', t: '🔎 Para vender, busca al comprador', d: 'Escribe su cédula o su apellido y tócalo en la lista.' });
+      st.push({ tab: 'vender', sel: '.code-entry', t: '🔢 Para vender, pide su código', d: 'Si paga con saldo, pásale el celular y que escriba aquí su código. Si paga en efectivo, búscalo por nombre más abajo.' });
       st.push({ sel: '#prod-list', t: '➕ Elige lo que lleva', d: 'Toca el botón + en cada producto.' });
-      st.push({ sel: '#b-save', t: '✅ Registra la venta', d: 'Si paga con saldo, pásale tu celular para que él escriba su código.' });
+      st.push({ sel: '#b-save', t: '✅ Registra la venta', d: 'Revisa el resumen y toca "Sí, registrar". El celular vibra cuando sale bien.' });
       if (r.includes('comp')) st.push({ sel: NAV('inicio'), t: '🛍️ También puedes comprar', d: 'En "Compras" está tu saldo y el botón para pagar con código.' });
     } else if (r.includes('comp')) {
       st.push({ tab: 'inicio', sel: '.balance', t: '💰 Este es tu saldo', d: 'Es el dinero que tienes para comprar en la feria.' });
@@ -344,12 +429,19 @@
 
   // Botón ❓: dos opciones grandes y claras
   function showHelpMenu() {
+    const esSuper = S.me.rol === 'superadmin';
     const b = modal('¿En qué te ayudo?', `<div class="stack">
       <button class="help-opt" id="hm-tour"><span class="e">▶️</span><span><strong>Ver el recorrido</strong><span class="s">Te muestro paso a paso cómo usar la app</span></span></button>
       <button class="help-opt" id="hm-faq"><span class="e">🛟</span><span><strong>Tengo un problema</strong><span class="s">Soluciones a lo que más pasa en la feria</span></span></button>
+      <button class="help-opt" id="hm-letra"><span class="e">🔠</span><span><strong>${letraGrande() ? 'Volver a letra normal' : 'Letra más grande'}</strong><span class="s">${letraGrande() ? 'Ahora estás con letra grande' : 'Para leer mejor sin lentes'}</span></span></button>
+      ${esInstalada() ? '' : '<button class="help-opt" id="hm-inst"><span class="e">📲</span><span><strong>Instalar en mi celular</strong><span class="s">Ábrela con un toque desde tu pantalla de inicio</span></span></button>'}
+      ${waNumero() ? `<a class="help-opt" href="${waLink()}" target="_blank" rel="noopener"><span class="e">💬</span><span><strong>Escribir a la mesa de ayuda</strong><span class="s">Te atienden por WhatsApp</span></span></a>`
+        : esSuper ? '<div class="help-opt" style="opacity:.6;cursor:default"><span class="e">💬</span><span><strong>WhatsApp de ayuda sin configurar</strong><span class="s">Agrega el número en Ajustes → Reglas del evento</span></span></div>' : ''}
       <p class="tiny muted center" style="margin:4px 0 0">También puedes tocar la <span class="info-i" style="pointer-events:none">i</span> junto a cada sección.</p></div>`);
     $('#hm-tour', b).onclick = () => { closeModal(); startTour(); };
     $('#hm-faq', b).onclick = () => { closeModal(); showHelp(); };
+    $('#hm-letra', b).onclick = () => { setLetra(!letraGrande()); closeModal(); toast(letraGrande() ? 'Listo: letra grande' : 'Listo: letra normal'); };
+    const hi = $('#hm-inst', b); if (hi) hi.onclick = () => { closeModal(); instalarApp(); };
   }
 
   // ================= Ayuda "¿Cómo funciona?" según el rol =================
@@ -386,8 +478,8 @@
       comunes.push(
         ['📡 Se cortó el Wi-Fi al registrar', 'Espera a que vuelva la señal y toca <strong>Registrar venta</strong> otra vez. <strong>La venta no se duplica</strong>: si ya se había guardado, verás la misma.'],
         ['🔢 "Código incorrecto, vencido o ya usado"', 'Pídele al comprador que genere un código nuevo en su celular y lo escriba otra vez. Tras 5 intentos fallidos se bloquea 10 minutos.'],
-        ['📦 Se acabó el stock', 'Marca <strong>Entrega posterior</strong> en el producto: se vende igual y lo entregas después. Luego, en <strong>Ventas</strong>, márcalo como entregado.'],
-        ['✏️ Me equivoqué en una venta', 'Ve a <strong>Ventas</strong>, ábrela y toca <strong>Modificar</strong> o <strong>Anular</strong> (con el motivo). Todo queda registrado.'],
+        ['📦 Se me acabó un producto', 'Marca <strong>Lo entrego otro día</strong> en el producto: se vende igual y lo entregas después. Luego, en <strong>Ventas</strong>, márcalo como entregado.'],
+        ['✏️ Me equivoqué en una venta', 'Ve a <strong>Ventas</strong>, ábrela y toca <strong>Modificar</strong> o <strong>Cancelar venta</strong> (con el motivo). Todo queda registrado.'],
         ['📵 El comprador no tiene celular', 'Puede pagar en efectivo o transferencia. Para usar saldo, que pase por la mesa de ayuda.'],
       );
     }
@@ -395,8 +487,8 @@
       secs.push(pasos('Administrar', '📊', [
         '<strong>Panel</strong>: ventas en vivo, se actualiza cada 15 segundos. Si aparece un aviso rojo de compras reportadas, revísalo primero.',
         '<strong>Ventas</strong>: busca y filtra todas las transacciones. El filtro <strong>Reportadas</strong> muestra las compras que un comprador no reconoce.',
-        'En una compra reportada, habla con el emprendedor y decide: <strong>Anular por reporte</strong> (devuelve el saldo) o <strong>Descartar</strong>.',
-        '<strong>Reportes</strong>: cuentas por cobrar por empleado y liquidación a emprendedores, para descargar en Excel.',
+        'En una compra reportada, habla con el emprendedor y decide: <strong>Cancelar por reporte</strong> (devuelve el saldo) o <strong>Descartar</strong>.',
+        '<strong>Reportes</strong>: cuentas por cobrar por empleado y pago a emprendedores, para descargar en Excel.',
       ]));
       if (roles.includes('super')) {
         secs.push(pasos('Super administrador', '🛠️', [
@@ -416,6 +508,7 @@
     const b = modal('Tengo un problema', `<div class="stack">
       <p class="small muted" style="margin:0">Toca lo que te pasa para ver qué hacer.</p>
       ${faq(comunes)}
+      ${waBtn('btn block')}
       <div class="alert info small">${icon('shield', 16)} <strong>Seguridad:</strong> nunca compartas tu contraseña ni tu PIN. El personal de la feria nunca te los va a pedir.</div>
       <button class="btn primary block lg" id="h-ok">Entendido</button></div>`, { wide: true });
     $('#h-ok', b).onclick = closeModal;
@@ -424,6 +517,7 @@
   // Aviso inmediato al comprador cada vez que se cobra algo con su saldo: si no fue él, lo reporta en el momento
   async function avisoCompra(id) {
     S.payCode = null;
+    feedbackOk();
     try {
       const v = await api('GET', '/api/ventas/' + id);
       if ($('#modal-root').innerHTML) return toast(`Se cobró ${fmt(v.total_saldo)} de tu saldo en ${v.nombre_comercial}`);
@@ -448,8 +542,8 @@
     confirmar: 'Un vendedor registró una compra a tu nombre. Dinos si es tuya. Si no respondes a tiempo, se cancela sola y no se te cobra.',
     compras: 'Aquí está todo lo que compraste. Toca una compra para ver el detalle.',
     catalogo: 'Toca una categoría para ver sus puestos y toca un puesto para ver lo que vende. El orden cambia para cada persona, así todos tienen la misma oportunidad.',
-    quien: 'Busca a la persona que te compra: escribe su cédula o su apellido y tócala en la lista.',
-    que: 'Toca + para agregar un producto y − para quitarlo. Si se acabó, marca "Entrega posterior" y lo entregas otro día.',
+    quien: 'Si paga con saldo, pásale el celular para que escriba su código de 6 números: la app sabe quién es. Si paga en efectivo, escribe su cédula o apellido y tócalo en la lista.',
+    que: 'Toca + para agregar un producto y − para quitarlo. Si se acabó, marca "Lo entrego otro día" y lo entregas después.',
     como: 'Elige cómo te paga. "Saldo" es el dinero de la empresa: ese valor te lo paga la empresa después. Puedes combinar, por ejemplo saldo y efectivo.',
     autorizacion: 'Para cobrar con saldo, el comprador debe aprobarlo. Pásale tu celular para que él mismo escriba su código.',
     porcobrar: 'Es lo que te pagaron con saldo. Ese dinero te lo entrega la empresa después de la feria.',
@@ -484,10 +578,10 @@
   window.addEventListener('scroll', hideInfo, { passive: true });
   function estadoBadges(v) {
     const b = [];
-    if (v.estado === 'anulada') b.push('<span class="badge b-bad">Anulada</span>');
+    if (v.estado === 'anulada') b.push('<span class="badge b-bad">Cancelada</span>');
     else if (v.estado === 'por_confirmar') b.push('<span class="badge b-warn">Por confirmar</span>');
     else b.push('<span class="badge b-ok">Confirmada</span>');
-    if (v.estado !== 'anulada' && v.estado_entrega === 'pendiente') b.push('<span class="badge b-info">Entrega pendiente</span>');
+    if (v.estado !== 'anulada' && v.estado_entrega === 'pendiente') b.push('<span class="badge b-info">Por entregar</span>');
     if (v.reporte_estado === 'pendiente') b.push('<span class="badge b-bad">Reportada</span>');
     return b.join(' ');
   }
@@ -514,12 +608,12 @@
     if (esVend && v.estado === 'por_confirmar') acc.push(`<button class="btn primary grow" data-a="pin">Confirmar con ${authLabel().toLowerCase()}</button>`);
     const esAdmin = ['admin', 'superadmin'].includes(me.rol);
     if (esComp && v.estado === 'confirmada' && Number(v.total_saldo) > 0 && !v.reporte_estado) acc.push('<button class="btn danger grow" data-a="rep">No reconozco esta compra</button>');
-    if (esAdmin && v.reporte_estado === 'pendiente') acc.push('<button class="btn danger grow" data-a="rep-anul">Anular por reporte</button><button class="btn grow" data-a="rep-desc">Descartar reporte</button>');
+    if (esAdmin && v.reporte_estado === 'pendiente') acc.push('<button class="btn danger grow" data-a="rep-anul">Cancelar por reporte</button><button class="btn grow" data-a="rep-desc">Descartar reporte</button>');
     if (esVend && v.estado === 'confirmada' && v.estado_entrega === 'pendiente') acc.push('<button class="btn primary grow" data-a="ent">Marcar entregado</button>');
     if (esVend && v.estado !== 'anulada') acc.push('<button class="btn grow" data-a="edit">Modificar</button>');
-    if ((esVend || esSuper) && v.estado !== 'anulada') acc.push('<button class="btn danger grow" data-a="anul">Anular</button>');
+    if ((esVend || esSuper) && v.estado !== 'anulada') acc.push('<button class="btn danger grow" data-a="anul">Cancelar venta</button>');
     if ((esVend || esComp || ['admin', 'superadmin'].includes(me.rol)) && v.estado !== 'por_confirmar') acc.push('<button class="btn grow" data-a="mail">Enviar por correo</button>');
-    const ACC = { creada: 'Registrada', modificada: 'Modificada', confirmada: 'Confirmada por el comprador', anulada: 'Anulada', anulada_automatica: 'Anulada automáticamente', entregada: 'Entregada',
+    const ACC = { creada: 'Registrada', modificada: 'Modificada', confirmada: 'Confirmada por el comprador', anulada: 'Cancelada', anulada_automatica: 'Cancelada automáticamente', entregada: 'Entregada',
       reportada: 'Reportada por el comprador', reporte_resuelto: 'Reporte revisado' };
     const MEDIO = { pin: 'con PIN', codigo: 'con código de pago', app: 'desde la app del comprador' };
     b.innerHTML = `<div class="stack">
@@ -531,9 +625,9 @@
       ${v.estado === 'anulada' ? `<div class="alert bad">Motivo: ${esc(v.motivo_anulacion)}</div>` : ''}
       ${v.estado !== 'anulada' && v.fecha_limite_entrega && v.estado_entrega === 'pendiente' ? `<div class="alert info">Entregar a más tardar el ${fdate(v.fecha_limite_entrega, { weekday: 'short' })}. Si no se entrega, se anula automáticamente.</div>` : ''}
       <div class="card flat"><div class="spread"><div><div class="muted tiny">Emprendimiento</div><strong>${esc(v.nombre_comercial)}</strong></div><div class="right"><div class="muted tiny">Comprador</div><strong>${esc(v.comprador_nombre)}</strong><div class="tiny muted">${esc(v.comprador_cedula)}</div></div></div></div>
-      <div class="card flat"><table class="lines">${v.detalle.map(d => `<tr><td>${d.cantidad} × ${esc(d.descripcion)}${d.entrega_posterior ? ' <span class="badge b-info">posterior</span>' : ''}<div class="tiny muted">${fmt(d.precio_unit)} c/u</div></td><td class="right num">${fmt(d.subtotal)}</td></tr>`).join('')}
+      <div class="card flat"><table class="lines">${v.detalle.map(d => `<tr><td>${d.cantidad} × ${esc(d.descripcion)}${d.entrega_posterior ? ' <span class="badge b-info">otro día</span>' : ''}<div class="tiny muted">${fmt(d.precio_unit)} c/u</div></td><td class="right num">${fmt(d.subtotal)}</td></tr>`).join('')}
         <tr class="tot"><td>Total</td><td class="right num">${fmt(v.total)}</td></tr>
-        ${v.pagos.map(p => `<tr><td class="muted"><span class="pay-ic sm f-${p.forma}">${icon(FORMA_IC[p.forma], 14)}</span> ${FORMA[p.forma]}${p.forma === 'saldo' ? ' <span class="tiny">(cuenta por cobrar)</span>' : ''}</td><td class="right num muted">${fmt(p.monto)}</td></tr>`).join('')}</table></div>
+        ${v.pagos.map(p => `<tr><td class="muted"><span class="pay-ic sm f-${p.forma}">${icon(FORMA_IC[p.forma], 14)}</span> ${FORMA[p.forma]}${p.forma === 'saldo' ? ' <span class="tiny">(lo paga la empresa)</span>' : ''}</td><td class="right num muted">${fmt(p.monto)}</td></tr>`).join('')}</table></div>
       ${acc.length ? `<div class="btns">${acc.join('')}</div>` : ''}
       <div><h3 style="margin-bottom:10px">Historial</h3><ul class="timeline">${(v.historial || []).map(h => `<li><strong>${ACC[h.accion] || h.accion}</strong> · ${fdate(h.fecha)}${h.usuario ? ` · ${esc(h.usuario)}` : ''}
         ${h.detalle && h.detalle.motivo ? `<div class="muted">Motivo: ${esc(h.detalle.motivo)}</div>` : ''}
@@ -561,15 +655,15 @@
         }
         if (a === 'rep-anul' || a === 'rep-desc') {
           const anula = a === 'rep-anul';
-          const r = await ask(anula ? 'Anular por reporte' : 'Descartar reporte', `<p class="small">${anula ? 'Se anulará la venta, se devolverá el saldo al comprador y el stock al emprendedor.' : 'La venta se mantiene. El comprador recibirá un correo con tu nota.'}</p>
-            <label class="field"><span>Nota (se envía al comprador)</span><textarea class="input" name="nota" rows="2"></textarea></label>`, anula ? 'Anular venta' : 'Descartar', anula);
+          const r = await ask(anula ? 'Cancelar por reporte' : 'Descartar reporte', `<p class="small">${anula ? 'Se cancelará la venta, se devolverá el saldo al comprador y los productos al emprendedor.' : 'La venta se mantiene. El comprador recibirá un correo con tu nota.'}</p>
+            <label class="field"><span>Nota (se envía al comprador)</span><textarea class="input" name="nota" rows="2"></textarea></label>`, anula ? 'Sí, cancelar venta' : 'Descartar', anula);
           if (!r) return openVenta(id, after);
-          return guard($('#q-ok'), async () => { await api('POST', `/api/admin/ventas/${id}/reporte`, { accion: anula ? 'anular' : 'descartar', nota: r.nota }); done(anula ? 'Venta anulada' : 'Reporte descartado'); });
+          return guard($('#q-ok'), async () => { await api('POST', `/api/admin/ventas/${id}/reporte`, { accion: anula ? 'anular' : 'descartar', nota: r.nota }); done(anula ? 'Venta cancelada' : 'Reporte descartado'); });
         }
         if (a === 'anul') {
-          const r = await ask('Anular venta', `<p class="small">Se devolverá el stock${Number(v.total_saldo) > 0 ? ' y el saldo del comprador' : ''}. Esta acción queda registrada.</p><label class="field"><span>Motivo</span><textarea class="input" name="motivo" rows="2" required></textarea></label>`, 'Anular venta', true);
+          const r = await ask('Cancelar venta', `<p class="small">Los productos vuelven a tu inventario${Number(v.total_saldo) > 0 ? ' y el saldo vuelve al comprador' : ''}. Queda registrado.</p><label class="field"><span>¿Por qué la cancelas?</span><textarea class="input" name="motivo" rows="2" required></textarea></label>`, 'Sí, cancelar venta', true);
           if (!r) return openVenta(id, after);
-          return guard($('#q-ok'), async () => { await api('POST', `/api/ventas/${id}/anular`, { motivo: r.motivo }); done('Venta anulada'); });
+          return guard($('#q-ok'), async () => { await api('POST', `/api/ventas/${id}/anular`, { motivo: r.motivo }); done('Venta cancelada'); });
         }
       };
     });
@@ -640,10 +734,13 @@
       ${s.editId ? `<div class="alert info spread" style="margin-bottom:12px"><span>Modificando la venta <strong>N.º ${s.editId}</strong></span><button class="btn sm" id="b-cancel-edit">Cancelar</button></div>` : ''}
       <div class="card">
         <div class="steps-h"><span class="n">1</span>¿Quién compra? ${infoBtn('quien')}</div>
-        ${c ? `<div class="buyer"><div class="ini">${esc(initials(c.nombre))}</div><div class="grow"><div style="font-weight:600">${esc(c.nombre)}</div><div class="small muted">${esc(c.cedula)}</div></div>
+        ${c ? `<div class="buyer"><div class="ini">${esc(initials(c.nombre))}</div><div class="grow"><div style="font-weight:600">${esc(c.nombre)}</div><div class="small muted">${esc(c.cedula)}</div>${s.codeOk ? '<div class="tiny" style="color:var(--ok);font-weight:600;margin-top:2px">✅ Identificado con su código</div>' : ''}</div>
           <div class="right"><div class="tiny muted">Saldo disponible</div><div style="font-weight:700;font-size:18px" class="num">${fmt(m2(c2(c.saldo_disponible) + c2(c.saldo_previo || 0)))}</div></div></div>
           ${s.editId ? '' : '<button class="btn sm ghost" id="b-chg" style="margin-top:6px">Cambiar comprador</button>'}`
-        : `<div class="input-ic">${icon('search', 18)}<input class="input" id="q-comp" placeholder="Escribe la cédula, nombre o apellido" autocomplete="off" inputmode="search"></div><div id="r-comp" style="margin-top:8px"></div>`}
+        : `<div class="code-entry"><label for="q-code"><strong>¿Paga con saldo?</strong> Pásale el celular para que escriba aquí el código de 6 números que le sale en su app:</label>
+            <input class="input pin" id="q-code" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="______"></div>
+          <div class="or-sep"><span>o, si paga en efectivo, búscalo por su nombre</span></div>
+          <div class="input-ic">${icon('search', 18)}<input class="input" id="q-comp" placeholder="Escribe la cédula, nombre o apellido" autocomplete="off" inputmode="search"></div><div id="r-comp" style="margin-top:8px"></div>`}
       </div>
       <div class="card">
         <div class="steps-h"><span class="n">2</span>¿Qué lleva? ${infoBtn('que')}</div>
@@ -653,12 +750,12 @@
           const l = s.cart[p.id]; const a = avail(p);
           return `<div class="prod" data-name="${esc(p.nombre.toLowerCase())}"><div><div class="n">${esc(p.nombre)}</div><div class="p">${fmt(p.precio)} · ${a > 0 ? `${a} disponibles` : '<span style="color:var(--warn)">sin stock hoy</span>'}</div></div>
             <div class="stepper"><button data-dec="${p.id}" aria-label="Quitar">−</button><span>${l ? l.cant : 0}</span><button data-inc="${p.id}" aria-label="Agregar">+</button></div>
-            ${l ? `<label class="check later"><input type="checkbox" data-later="${p.id}" ${l.later ? 'checked' : ''} ${a <= 0 && !l.later ? 'disabled' : ''}> Entrega posterior (no descuenta stock de hoy)</label>` : ''}</div>`;
+            ${l ? `<label class="check later"><input type="checkbox" data-later="${p.id}" ${l.later ? 'checked' : ''} ${a <= 0 && !l.later ? 'disabled' : ''}> Lo entrego otro día (no se descuenta de lo que tienes hoy)</label>` : ''}</div>`;
         }).join('')}</div>
       </div>
       <div class="card" id="pay-card">
         <div class="steps-h"><span class="n">3</span>¿Cómo paga? ${infoBtn('como')}</div>
-        ${['saldo', 'efectivo', 'transferencia'].map(f => `<div class="pay"><label for="p-${f}"><span class="pay-ic f-${f}">${icon(FORMA_IC[f], 18)}</span><span>${FORMA[f]}${f === 'saldo' ? '<span class="tiny muted" style="display:block;font-weight:400">cuenta por cobrar</span>' : ''}</span></label>
+        ${['saldo', 'efectivo', 'transferencia'].map(f => `<div class="pay"><label for="p-${f}"><span class="pay-ic f-${f}">${icon(FORMA_IC[f], 18)}</span><span>${FORMA[f]}${f === 'saldo' ? '<span class="tiny muted" style="display:block;font-weight:400">lo paga la empresa</span>' : ''}</span></label>
           <input class="input money" id="p-${f}" data-pay="${f}" inputmode="decimal" placeholder="0.00" value="${esc(s.pagos[f])}" ${f === 'saldo' && (!c || !c.saldo_disponible && !c.saldo_previo) ? 'disabled' : ''}></div>`).join('')}
         <div class="tiny muted" style="margin:2px 0 6px">Puedes combinar: por ejemplo, parte con saldo y el resto en efectivo.</div>
         <div class="btns" style="margin:6px 0 4px">${['saldo', 'efectivo', 'transferencia'].map(f => `<button class="btn sm" data-fill="${f}">${icon(FORMA_IC[f], 16)} Todo ${FORMA[f].toLowerCase()}</button>`).join('')}</div>
@@ -683,9 +780,24 @@
         } catch (e) { toast(e.message, true); }
       });
       q.oninput = search;
-      setTimeout(() => q.focus(), 30);
     }
-    const chg = $('#b-chg', main); if (chg) chg.onclick = () => { s.comprador = null; s.touched = false; s.pagos = { saldo: '', efectivo: '', transferencia: '' }; renderVender(main); };
+    // Código del comprador: con 6 números, la app lo identifica sola
+    const qc = $('#q-code', main);
+    if (qc) qc.oninput = async () => {
+      qc.value = qc.value.replace(/\D/g, '').slice(0, 6);
+      if (qc.value.length !== 6) return;
+      const code = qc.value;
+      qc.disabled = true;
+      try {
+        const r = await api('POST', '/api/compradores/por-codigo', { codigo: code });
+        Object.assign(s, { comprador: r, pin: code, codeOk: true, auth: 'pin', touched: false });
+        feedbackOk();
+        renderVender(main);
+      } catch (e) {
+        toast(e.message, true); qc.disabled = false; qc.value = ''; qc.focus();
+      }
+    };
+    const chg = $('#b-chg', main); if (chg) chg.onclick = () => { s.comprador = null; s.touched = false; s.pin = ''; s.codeOk = false; s.pagos = { saldo: '', efectivo: '', transferencia: '' }; renderVender(main); };
     const ce = $('#b-cancel-edit', main); if (ce) ce.onclick = () => { S.sale = newSale(); go('ventas'); };
     const gp = $('#go-prod', main); if (gp) gp.onclick = (e) => { e.preventDefault(); go('productos'); };
     const qp = $('#q-prod', main);
@@ -695,7 +807,7 @@
     main.querySelectorAll('[data-inc]').forEach(b => { b.onclick = () => {
       const p = prods.find(x => x.id === Number(b.dataset.inc)); const l = s.cart[p.id] || { cant: 0, later: false };
       l.cant++;
-      if (!l.later && l.cant > avail(p)) { if (l.cant === 1) l.later = true; else { toast(`Solo hay ${avail(p)} disponibles. Marca "entrega posterior" para vender más.`, true); l.cant--; } }
+      if (!l.later && l.cant > avail(p)) { if (l.cant === 1) l.later = true; else { toast(`Solo te quedan ${avail(p)}. Marca "Lo entrego otro día" para vender más.`, true); l.cant--; } }
       s.cart[p.id] = l; s.touched = s.editId ? s.touched : false; renderVender(main); keepPos(b);
     }; });
     main.querySelectorAll('[data-dec]').forEach(b => { b.onclick = () => {
@@ -735,8 +847,15 @@
     const needAuth = saldo > 0 && (!s.editId || saldo > c2(s.comprador?.saldo_previo || 0));
     if (saldo > saldoMax) { box.dataset.state = ''; box.innerHTML = `<div class="alert bad" style="margin-top:10px">El saldo disponible es ${fmt(m2(saldoMax))}</div>`; return; }
     if (!needAuth) { box.dataset.state = ''; box.innerHTML = ''; return; }
-    if (box.dataset.state === 'auth-' + s.auth) return;
-    box.dataset.state = 'auth-' + s.auth;
+    const estadoAuth = 'auth-' + s.auth + (s.codeOk ? '-ok' : '');
+    if (box.dataset.state === estadoAuth) return;
+    box.dataset.state = estadoAuth;
+    if (s.auth === 'pin' && s.codeOk) {
+      box.innerHTML = `<hr class="sep"><div class="alert ok">✅ <strong>El comprador ya escribió su código.</strong> Revisa los productos y toca <strong>Registrar venta</strong>.</div>
+        <button class="btn sm ghost" id="code-reset" style="margin-top:6px">Escribir otro código</button>`;
+      $('#code-reset').onclick = () => { s.codeOk = false; s.pin = ''; box.dataset.state = ''; updateTotals(); };
+      return;
+    }
     box.innerHTML = `<hr class="sep"><div style="font-weight:600;margin-bottom:6px">Autorización del comprador ${infoBtn('autorizacion')}</div>
       <div class="chips" style="margin-bottom:10px"><button class="chip ${s.auth === 'pin' ? 'on' : ''}" data-auth="pin">${authLabel()} aquí</button><button class="chip ${s.auth === 'app' ? 'on' : ''}" data-auth="app">Aprobar en su celular</button></div>
       ${s.auth === 'pin' ? `<input class="input pin" id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="${S.me.evento.pago_con_pin ? '••••' : '••••••'}" value="${esc(s.pin)}">
@@ -768,16 +887,38 @@
       pin: needAuth && s.auth === 'pin' ? s.pin : undefined, motivo: s.motivo || undefined,
       idem: s.editId ? undefined : s.idem,
     };
+    // Resumen grande antes de guardar: se revisa de un vistazo y se evitan errores
+    const prods = S.cache.prods || [];
+    const lineas = Object.entries(s.cart).map(([pid, l]) => {
+      const p = prods.find(x => x.id === Number(pid)) || { nombre: '?', precio: 0 };
+      return `<tr><td><strong>${l.cant}×</strong> ${esc(p.nombre)}${l.later ? ' <span class="badge b-info">otro día</span>' : ''}</td><td class="right num">${fmt(m2(c2(p.precio) * l.cant))}</td></tr>`;
+    }).join('');
+    const pagosTxt = body.pagos.map(p => `<span class="sum-pago"><span class="pay-ic sm f-${p.forma}">${icon(FORMA_IC[p.forma], 14)}</span> ${FORMA[p.forma]} <strong>${fmt(p.monto)}</strong></span>`).join('');
+    const okR = await ask(s.editId ? '¿Guardar los cambios?' : '¿Está todo bien?', `<div class="stack summary">
+      <div class="buyer"><div class="ini">${esc(initials(s.comprador.nombre))}</div><div class="grow"><div style="font-weight:700">${esc(s.comprador.nombre)}</div><div class="small muted">${esc(s.comprador.cedula)}</div></div></div>
+      <table class="lines">${lineas}<tr class="tot"><td>Total</td><td class="right num">${fmt(m2(total))}</td></tr></table>
+      <div class="row wrap" style="gap:8px">${pagosTxt}</div>
+      ${needAuth && s.auth === 'app' ? '<div class="alert info small">El comprador tendrá que aprobarla en su celular.</div>' : ''}</div>`, s.editId ? '✅ Sí, guardar' : '✅ Sí, registrar');
+    if (!okR) return;
+    closeModal();
     await guard(btn, async () => {
-      const v = s.editId ? await api('PUT', '/api/ventas/' + s.editId, body) : await api('POST', '/api/ventas', body);
+      let v;
+      try {
+        v = s.editId ? await api('PUT', '/api/ventas/' + s.editId, body) : await api('POST', '/api/ventas', body);
+      } catch (e) {
+        // Si el código venció o ya se usó, se deja escribir uno nuevo sin empezar de cero
+        if (/código|PIN/i.test(e.message)) { s.codeOk = false; s.pin = ''; const bx = $('#auth-box'); if (bx) { bx.dataset.state = ''; updateTotals(); } }
+        throw e;
+      }
       S.sale = newSale();
       S.cache.prods = null;
-      const b = modal(s.editId ? 'Venta modificada' : 'Venta registrada', `<div class="success"><div class="ic">${icon('check', 34)}</div>
+      feedbackOk();
+      const b = modal(s.editId ? 'Venta modificada' : 'Venta registrada', `<div class="success"><div class="ic big">${icon('check', 44)}</div>
         <h2>${fmt(v.total)}</h2><p class="muted" style="margin:4px 0 12px">N.º ${v.id} · ${esc(v.comprador_nombre)}</p>
-        ${v.estado === 'por_confirmar' ? '<div class="alert warn">Pendiente: el comprador debe confirmarla en su celular.</div>' : ''}
-        ${v.estado_entrega === 'pendiente' ? `<div class="alert info" style="margin-top:8px">Entrega pendiente${v.fecha_limite_entrega ? ' hasta ' + fdate(v.fecha_limite_entrega, { weekday: 'short' }) : ''}.</div>` : ''}
+        ${v.estado === 'por_confirmar' ? '<div class="alert warn">Falta un paso: el comprador debe confirmarla en su celular.</div>' : ''}
+        ${v.estado_entrega === 'pendiente' ? `<div class="alert info" style="margin-top:8px">Recuerda entregarlo${v.fecha_limite_entrega ? ' hasta el ' + fdate(v.fecha_limite_entrega, { weekday: 'short' }) : ''}.</div>` : ''}
         ${v.estado === 'confirmada' ? `<p class="small muted">${S.me.correo_activo ? 'Se envió el comprobante al correo del comprador.' : ''}</p>` : ''}
-        <button class="btn primary block lg" id="b-new" style="margin-top:12px">Nueva venta</button></div>`);
+        <button class="btn primary block lg" id="b-new" style="margin-top:12px">${icon('cart', 20)} Nueva venta</button></div>`);
       $('#b-new', b).onclick = () => { closeModal(); go('vender'); };
       go(s.editId ? 'ventas' : 'vender');
     });
@@ -789,13 +930,27 @@
     const f = S.cache.vfiltro || 'todas';
     const filt = { todas: () => true, por_confirmar: v => v.estado === 'por_confirmar', pendiente: v => v.estado === 'confirmada' && v.estado_entrega === 'pendiente', anulada: v => v.estado === 'anulada' };
     const R = r.resumen;
-    main.innerHTML = `<div class="kpis">
+    // Resumen de hoy (hora de Ecuador) y el efectivo que debería haber en la caja
+    const diaEc = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+    const hoyEc = diaEc(new Date());
+    const deHoy = r.ventas.filter(v => v.estado === 'confirmada' && diaEc(v.creado) === hoyEc);
+    const sumHoy = (fn) => deHoy.reduce((a, v) => a + fn(v), 0);
+    const porFormaHoy = (f) => sumHoy(v => v.pagos.filter(p => p.forma === f).reduce((b, p) => b + c2(p.monto), 0));
+    const totHoy = sumHoy(v => c2(v.total));
+    main.innerHTML = `<div class="card today">
+        <div class="spread" style="align-items:flex-start"><div><div class="small muted">📅 Hoy vendiste</div><div class="big num">${fmt(m2(totHoy))}</div>
+          <div class="small muted">${deHoy.length} ${deHoy.length === 1 ? 'venta' : 'ventas'}</div></div>
+          <div class="cash-box"><div class="tiny">💵 Efectivo en tu caja</div><div class="num">${fmt(m2(porFormaHoy('efectivo')))}</div></div></div>
+        <div class="row wrap" style="gap:8px;margin-top:10px">${['saldo', 'efectivo', 'transferencia'].map(f => `<span class="sum-pago"><span class="pay-ic sm f-${f}">${icon(FORMA_IC[f], 14)}</span> ${FORMA[f]} <strong>${fmt(m2(porFormaHoy(f)))}</strong></span>`).join('')}</div>
+        <div class="tiny muted" style="margin-top:8px">El efectivo en caja es solo lo de las ventas de hoy: súmale lo que tenías al empezar. Lo de "Saldo" te lo paga la empresa después.</div></div>
+      <div class="section-title"><h2>Desde el inicio de la feria</h2></div>
+      <div class="kpis">
         <div class="kpi"><div class="l">Total vendido</div><div class="v">${fmt(R.total)}</div><div class="d">${R.ventas} ${R.ventas === 1 ? 'venta confirmada' : 'ventas confirmadas'}</div></div>
-        <div class="kpi"><div class="l">Saldo (cuentas por cobrar) ${infoBtn('porcobrar')}</div><div class="v">${fmt(R.saldo)}</div><div class="d">Lo paga la empresa</div></div>
+        <div class="kpi"><div class="l">Con saldo ${infoBtn('porcobrar')}</div><div class="v">${fmt(R.saldo)}</div><div class="d">Lo paga la empresa</div></div>
         <div class="kpi"><div class="l">Efectivo</div><div class="v">${fmt(R.efectivo)}</div></div>
         <div class="kpi"><div class="l">Transferencia</div><div class="v">${fmt(R.transferencia)}</div></div></div>
       <div class="section-title"><div class="chips" id="vf">
-        ${[['todas', 'Todas'], ['por_confirmar', `Por confirmar (${R.por_confirmar})`], ['pendiente', `Por entregar (${R.pendientes_entrega})`], ['anulada', 'Anuladas']].map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('')}</div></div>
+        ${[['todas', 'Todas'], ['por_confirmar', `Por confirmar (${R.por_confirmar})`], ['pendiente', `Por entregar (${R.pendientes_entrega})`], ['anulada', 'Canceladas']].map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-f="${k}">${l}</button>`).join('')}</div></div>
       <input class="input" id="vq" placeholder="Buscar por comprador o N.º" style="margin-bottom:10px">
       <div class="list" id="vl"></div>`;
     const paint = () => {
@@ -822,7 +977,7 @@
       <div class="list">${prods.length ? prods.map(p => `<button class="item" data-p="${p.id}"><div class="grow"><div class="t">${esc(p.nombre)} ${p.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</div>
         <div class="s">${p.descripcion ? esc(p.descripcion) : ''}</div></div><div class="right"><div class="amt">${fmt(p.precio)}</div>
         <div class="tiny"><span class="badge ${p.stock > 0 ? 'b-ok' : 'b-warn'}">Stock ${p.stock}</span></div></div></button>`).join('') : emptyState('box', 'Agrega lo que vas a vender', 'Toca "+ Agregar" e ingresa nombre, precio y cuántos tienes. Puedes cambiarlo cuando quieras.')}</div>
-      <p class="tiny muted" style="margin-top:12px">El stock es lo disponible el día del evento. Los pedidos con entrega posterior no lo descuentan.</p>`;
+      <p class="tiny muted" style="margin-top:12px">"Cuántos tienes" es lo que llevas para vender el día de la feria. Lo que marques como "Lo entrego otro día" no se descuenta.</p>`;
     $('#mi-cat').onchange = async (e) => {
       try { await api('PUT', '/api/mi-emprendimiento', { categoria: e.target.value }); await loadMe(); toast('Categoría guardada'); go('productos'); }
       catch (err) { toast(err.message, true); }
@@ -1013,6 +1168,12 @@
     main.innerHTML = `<div class="card"><div class="row"><div class="buyer" style="background:none;padding:0"><div class="ini">${esc(initials(me.nombres + ' ' + me.apellidos))}</div></div>
         <div><div style="font-weight:700">${esc(me.nombres)} ${esc(me.apellidos)}</div><div class="small muted">${esc(me.cedula)}${me.email ? ' · ' + esc(me.email) : ''}</div>
         <div class="row wrap" style="gap:6px;margin-top:6px">${roleTags(me)}</div></div></div></div>
+      <div class="card"><h3 style="margin-bottom:10px">🔠 Tamaño de letra</h3>
+        <div class="seg" role="group" aria-label="Tamaño de letra">
+          <button type="button" data-letra="0" class="${letraGrande() ? '' : 'on'}"><span style="font-size:16px">A</span><small>Normal</small></button>
+          <button type="button" data-letra="1" class="${letraGrande() ? 'on' : ''}"><span style="font-size:26px">A</span><small>Grande</small></button></div></div>
+      ${esInstalada() ? '' : `<div class="card"><h3 style="margin-bottom:4px">📲 La feria en tu celular</h3><p class="small muted" style="margin:0 0 10px">Ábrela con un toque desde tu pantalla de inicio, sin buscar el enlace.</p>
+        <button class="btn primary block lg" id="b-inst">Instalar en mi celular</button></div>`}
       <div class="card"><h3 style="margin-bottom:12px">Cambiar contraseña</h3><form class="stack" id="fc">
         <label class="field"><span>Contraseña actual</span><input class="input" type="password" name="actual" required autocomplete="current-password"></label>
         <label class="field"><span>Nueva contraseña</span><input class="input" type="password" name="nueva" minlength="6" required autocomplete="new-password"></label>
@@ -1023,6 +1184,8 @@
         <button class="btn primary">Guardar PIN</button></form></div>` : ''}
       <button class="btn danger block" id="b-logout" style="margin-top:16px">Cerrar sesión</button>`;
     $('#b-logout').onclick = logout;
+    main.querySelectorAll('[data-letra]').forEach(b => { b.onclick = () => { setLetra(b.dataset.letra === '1'); go('cuenta'); }; });
+    const bi = $('#b-inst', main); if (bi) bi.onclick = instalarApp;
     $('#fc').onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => { const r = await api('POST', '/api/me/clave', { actual: f.actual.value, nueva: f.nueva.value }); saveToken(r.token); f.reset(); toast('Contraseña actualizada'); }); };
     const fp = $('#fp');
     if (fp) fp.onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => { await api('POST', '/api/me/pin', { pin: f.pin.value, clave: f.clave.value }); f.reset(); await loadMe(); toast('PIN actualizado'); }); };
@@ -1062,7 +1225,7 @@
     const F = S.cache.af || (S.cache.af = { q: '', emp: '', estado: '' });
     main.innerHTML = `<div class="stack"><input class="input" id="aq" placeholder="Cédula, comprador o N.º de venta" value="${esc(F.q)}">
       <select class="input" id="ae"><option value="">Todos los emprendimientos</option>${emps.map(e => `<option value="${e.id}" ${String(F.emp) === String(e.id) ? 'selected' : ''}>${esc(e.nombre_comercial)}</option>`).join('')}</select>
-      <div class="chips">${[['', 'Todas'], ['confirmada', 'Confirmadas'], ['por_confirmar', 'Por confirmar'], ['pendiente', 'Por entregar'], ['reportada', 'Reportadas'], ['anulada', 'Anuladas']].map(([k, l]) => `<button class="chip ${F.estado === k ? 'on' : ''}" data-e="${k}">${l}</button>`).join('')}</div></div>
+      <div class="chips">${[['', 'Todas'], ['confirmada', 'Confirmadas'], ['por_confirmar', 'Por confirmar'], ['pendiente', 'Por entregar'], ['reportada', 'Reportadas'], ['anulada', 'Canceladas']].map(([k, l]) => `<button class="chip ${F.estado === k ? 'on' : ''}" data-e="${k}">${l}</button>`).join('')}</div></div>
       <div class="spread" style="margin:14px 2px 8px"><span class="small muted" id="acount"></span><button class="btn sm" id="ax">Exportar CSV</button></div><div class="list" id="al"></div>`;
     const load = async () => {
       const p = new URLSearchParams();
@@ -1086,7 +1249,7 @@
   // ---------- Reportes ----------
   VIEWS.reportes = async (main) => {
     const tab = S.cache.rep || 'cxc';
-    main.innerHTML = `<div class="chips" style="margin-bottom:14px">${[['cxc', 'Cuentas por cobrar'], ['liq', 'Liquidación a emprendedores'], ['exp', 'Exportar']].map(([k, l]) => `<button class="chip ${tab === k ? 'on' : ''}" data-r="${k}">${l}</button>`).join('')}</div><div id="rep"><div class="empty"><span class="spinner"></span></div></div>`;
+    main.innerHTML = `<div class="chips" style="margin-bottom:14px">${[['cxc', 'Cuentas por cobrar'], ['liq', 'Pago a emprendedores'], ['exp', 'Exportar']].map(([k, l]) => `<button class="chip ${tab === k ? 'on' : ''}" data-r="${k}">${l}</button>`).join('')}</div><div id="rep"><div class="empty"><span class="spinner"></span></div></div>`;
     main.querySelectorAll('[data-r]').forEach(b => { b.onclick = () => { S.cache.rep = b.dataset.r; go('reportes'); }; });
     const box = $('#rep');
     if (tab === 'cxc') {
@@ -1106,7 +1269,7 @@
         <tfoot><tr><td>Total</td><td class="n">${rows.reduce((a, r) => a + r.ventas, 0)}</td><td class="n">${s('saldo')}</td><td class="n">${s('efectivo')}</td><td class="n">${s('transferencia')}</td><td class="n">${s('total')}</td></tr></tfoot></table></div>`;
       $('#dx').onclick = (e) => download('/api/admin/export/liquidacion', 'liquidacion_emprendedores.csv', e.currentTarget);
     } else {
-      box.innerHTML = `<div class="list">${[['ventas', 'Ventas (una fila por venta)'], ['detalle', 'Detalle de productos vendidos'], ['cxc', 'Cuentas por cobrar por empleado'], ['liquidacion', 'Liquidación a emprendedores']].map(([k, l]) => `<button class="item" data-x="${k}"><div class="grow"><div class="t">${l}</div><div class="s">CSV compatible con Excel</div></div>${icon('file', 20)}</button>`).join('')}</div>`;
+      box.innerHTML = `<div class="list">${[['ventas', 'Ventas (una fila por venta)'], ['detalle', 'Detalle de productos vendidos'], ['cxc', 'Cuentas por cobrar por empleado'], ['liquidacion', 'Pago a emprendedores']].map(([k, l]) => `<button class="item" data-x="${k}"><div class="grow"><div class="t">${l}</div><div class="s">CSV compatible con Excel</div></div>${icon('file', 20)}</button>`).join('')}</div>`;
       box.querySelectorAll('[data-x]').forEach(b => { b.onclick = () => download('/api/admin/export/' + b.dataset.x, b.dataset.x + '.csv', b); });
     }
   };
@@ -1210,6 +1373,7 @@
             <option value="1" ${cfg.pago_con_pin !== '0' ? 'selected' : ''}>Permitido (PIN o código)</option>
             <option value="0" ${cfg.pago_con_pin === '0' ? 'selected' : ''}>Desactivado (solo código o app)</option></select></label>
           <label class="field"><span>Duración del código de pago (min)</span><input class="input money" name="minutos_codigo_pago" value="${esc(cfg.minutos_codigo_pago)}"></label></div>
+        <label class="field"><span>WhatsApp de la mesa de ayuda (con código de país, ej. 593991234567)</span><input class="input" name="whatsapp_soporte" inputmode="tel" placeholder="Vacío = no se muestra el botón" value="${esc(cfg.whatsapp_soporte)}"></label>
         <p class="tiny muted" style="margin:0">El código de pago lo genera el comprador en su celular y sirve una sola vez. Si desactivas el PIN, nadie puede pagar con un PIN escuchado; quien no tenga celular puede pagar en efectivo o pedir ayuda en la mesa de soporte.</p>
         <div class="btns"><button class="btn primary grow">Guardar reglas</button><button class="btn grow" type="button" id="b-recalc">Recalcular saldos de todos</button></div></form>
       <div class="section-title"><h2>Correos</h2><button class="btn sm" id="b-retry">Reintentar fallidos</button></div>

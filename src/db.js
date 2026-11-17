@@ -134,12 +134,13 @@ function createSqlite() {
       db.exec(fs.readFileSync(path.join(__dirname, '..', 'db', 'schema.sqlite.sql'), 'utf8'));
       // SQLite no tiene "ADD COLUMN IF NOT EXISTS": se revisa cada columna agregada después
       const nuevas = [['emprendimientos', 'categoria', 'TEXT'], ['ventas', 'idem', 'TEXT'], ['ventas', 'reporte', 'TEXT'],
-        ['ventas', 'reporte_estado', 'TEXT'], ['ventas', 'reportada_en', 'TEXT']];
+        ['ventas', 'reporte_estado', 'TEXT'], ['ventas', 'reportada_en', 'TEXT'], ['codigos_pago', 'codigo_clave', 'TEXT']];
       for (const [tabla, col, tipo] of nuevas) {
         const cols = db.prepare(`PRAGMA table_info(${tabla})`).all().map(c => c.name);
         if (!cols.includes(col)) db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${col} ${tipo}`);
       }
       db.exec('CREATE UNIQUE INDEX IF NOT EXISTS UX_ventas_idem ON ventas(vendedor_id, idem) WHERE idem IS NOT NULL');
+      db.exec('CREATE INDEX IF NOT EXISTS IX_codigos_clave ON codigos_pago(codigo_clave)');
     },
     close() { db.close(); },
   };

@@ -7,15 +7,21 @@
 <title>Feria de Emprendedores</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.webmanifest">
+<!-- iPhone: ícono y modo "app" al agregarla a la pantalla de inicio -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Feria">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- ?v=: súbalo en cada publicación para que los navegadores no usen archivos viejos guardados -->
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 <div id="app"><div class="boot">Cargando…</div></div>
 <div id="modal-root"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <!-- Modo demostración: solo se activa en GitHub Pages (*.github.io) o con ?demo; en el servidor real no hace nada -->
-<script src="demo/demo.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="demo/demo.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

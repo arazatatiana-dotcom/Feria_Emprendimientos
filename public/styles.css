@@ -267,6 +267,42 @@ details.faq > div { font-size: 13.5px; color: var(--ink-2); margin-top: 6px; }
 .help-opt strong { display: block; font-size: 16px; }
 .help-opt .s { display: block; font-size: 13.5px; color: var(--muted); margin-top: 2px; }
 
+/* Letra grande: agranda toda la app (textos y botones) */
+html.big-text #app, html.big-text #modal-root, html.big-text #toast { zoom: 1.18; }
+html.big-text #info-pop { font-size: 17.5px; }
+html.big-text #tour .tour-tip h3 { font-size: 22px; }
+html.big-text #tour .tour-tip p { font-size: 18.5px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg button { min-height: 72px; border-radius: 14px; border: 2px solid var(--line); background: var(--surface); cursor: pointer; font: inherit; color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-weight: 700; }
+.seg button small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.seg button.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+
+/* Venta: el comprador escribe su código */
+.code-entry { background: var(--brand-soft); border-radius: 14px; padding: 12px; }
+.code-entry label { display: block; font-size: 14px; margin-bottom: 8px; color: var(--ink); }
+.code-entry .input.pin { background: var(--surface); letter-spacing: 10px; }
+.or-sep { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; color: var(--muted); font-size: 13px; }
+.or-sep::before, .or-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.or-sep span { text-align: center; }
+
+/* Resumen antes de registrar y confirmación */
+.summary table.lines { font-size: 16px; }
+.sum-pago { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border-radius: 999px; padding: 5px 10px 5px 5px; font-size: 13.5px; }
+.success .ic.big { width: 88px; height: 88px; animation: pop .35s ease-out; }
+@keyframes pop { 0% { transform: scale(.5); opacity: 0; } 70% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
+
+/* Resumen del día (emprendedor) */
+.today .big { font-size: 34px; font-weight: 800; letter-spacing: -.5px; }
+.cash-box { background: var(--ok-soft); color: #145234; border-radius: 12px; padding: 10px 12px; text-align: right; }
+.cash-box .num { font-size: 22px; font-weight: 800; }
+
+/* WhatsApp e instalación */
+.wa-btn { background: #e7f8ee !important; color: #136c3a !important; border-color: #bfe8cf !important; font-weight: 600; text-decoration: none; }
+a.help-opt { text-decoration: none; }
+.install-preview { display: flex; align-items: center; gap: 12px; background: var(--surface-2); border-radius: 14px; padding: 12px; }
+.install-preview img { border-radius: 14px; }
+
 /* Sin conexión */
 .net-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 70; display: flex; gap: 8px; align-items: center; justify-content: center;
   background: var(--bad); color: #fff; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; font-size: 13.5px; font-weight: 600; text-align: center; }

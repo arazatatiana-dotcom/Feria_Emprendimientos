@@ -135,6 +135,10 @@ IF COL_LENGTH('dbo.ventas', 'reporte') IS NULL
   ALTER TABLE dbo.ventas ADD reporte NVARCHAR(300) NULL, reporte_estado NVARCHAR(20) NULL, reportada_en DATETIME2 NULL;
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_ventas_idem')
   CREATE UNIQUE INDEX UX_ventas_idem ON dbo.ventas(vendedor_id, idem) WHERE idem IS NOT NULL;
+IF COL_LENGTH('dbo.codigos_pago', 'codigo_clave') IS NULL
+  ALTER TABLE dbo.codigos_pago ADD codigo_clave NVARCHAR(64) NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_codigos_clave')
+  CREATE INDEX IX_codigos_clave ON dbo.codigos_pago(codigo_clave);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_codigos_usuario')
   CREATE INDEX IX_codigos_usuario ON dbo.codigos_pago(usuario_id, usado_en);
 
