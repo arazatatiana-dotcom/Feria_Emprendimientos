@@ -342,13 +342,14 @@
     d.id = 'demo-users';
     d.style.cssText = 'border-top:1px solid var(--line);padding-top:12px;margin-top:4px';
     d.innerHTML = `<div style="font-weight:700;font-size:14px">Usuarios de prueba</div>
-      <div class="tiny muted" style="margin:2px 0 8px">Clave <code>demo123</code> · PIN <code>2580</code></div>
+      <div class="tiny muted" style="margin:2px 0 8px">El comprador entra solo con su cédula (PIN <code>2580</code> para pagar). Los demás usan la clave <code>demo123</code>.</div>
       ${USUARIOS.map(([cls, rol, ced, que]) => `<div class="row" style="padding:6px 0;gap:8px">
         <div class="grow"><span class="role-tag ${cls}">${rol}</span> <code style="font-size:13px">${ced}</code><div class="tiny muted" style="margin-top:2px">${que}</div></div>
         <button type="button" class="btn sm" data-demo-user="${ced}">Entrar</button></div>`).join('')}`;
     f.appendChild(d);
     d.querySelectorAll('[data-demo-user]').forEach((b) => {
-      b.onclick = () => { f.cedula.value = b.dataset.demoUser; f.clave.value = 'demo123'; f.requestSubmit(); };
+      // El comprador entra solo con la cédula; los demás, con la clave de prueba
+      b.onclick = () => { f.cedula.value = b.dataset.demoUser; f.clave.value = b.dataset.demoUser === '1700000000' ? '' : 'demo123'; f.requestSubmit(); };
     });
   }
   const iniciarTarjeta = () => {

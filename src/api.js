@@ -33,6 +33,13 @@ async function auth(req) {
   // La sesión deja de valer si la contraseña se cambió o se reseteó después de emitir el token
   if (p.pv !== U.passVersion(u.pass_hash)) fail('Sesión expirada. Ingrese nuevamente.', 401);
   delete u.pass_hash;
+  // Sesión "solo con cédula" (compradores): sirve para mirar; para pagar o confirmar se pide el PIN.
+  // Deja de valer si la persona pasó a ser emprendedor/admin o si en Ajustes se vuelve a exigir contraseña.
+  if (p.lim) {
+    if (u.rol !== 'usuario' || u.emprendimiento_id || !u.es_comprador) fail('Ingrese nuevamente con su contraseña.', 401);
+    if ((await V.getConfig()).ingreso_comprador === 'clave') fail('Ahora se ingresa con cédula y contraseña. Ingrese nuevamente.', 401);
+  }
+  req.limitado = !!p.lim;
   req.user = u;
 }
 const role = (...roles) => async (req) => { if (!roles.includes(req.user.rol)) fail('No autorizado', 403); };
@@ -46,18 +53,34 @@ router.get('/api/publico', async () => {
   return { nombre_evento: cfg.nombre_evento, whatsapp: String(cfg.whatsapp_soporte || '').replace(/\D/g, '') };
 });
 
+// Ingreso en un solo paso:
+//  - Solo cédula: si es un comprador (sin emprendimiento ni rol de administración) y Ajustes lo permite,
+//    entra directo. Esa sesión sirve para mirar; para pagar o confirmar compras se le pide su PIN.
+//  - Emprendedores y administradores: se responde { necesita_clave: true } y la app pide la contraseña.
 const loginFails = new Map();
 router.post('/api/login', async (req) => {
   const cedula = U.normCedula(req.body.cedula);
+  if (!cedula) fail('Escribe tu número de cédula');
   const f = loginFails.get(cedula);
   if (f && f.until > Date.now()) fail('Demasiados intentos. Espere 5 minutos.', 429);
-  const u = await DB.get().get('SELECT id, pass_hash, activo FROM usuarios WHERE cedula = @c', { c: cedula });
-  if (!u || !u.activo || !U.verify(req.body.clave, u.pass_hash)) {
+  const fallo = (msg) => {
     // Si hubo un bloqueo y ya venció, el contador vuelve a empezar; si no, se acumula
     const n = (f && f.until && f.until <= Date.now() ? 0 : (f?.n || 0)) + 1;
     loginFails.set(cedula, { n, until: n >= 8 ? Date.now() + 5 * 60e3 : 0 });
-    fail('Cédula o contraseña incorrecta', 401);
+    fail(msg, 401);
+  };
+  const u = await DB.get().get(`SELECT u.id, u.pass_hash, u.activo, u.rol, u.es_comprador, e.id AS emp
+    FROM usuarios u LEFT JOIN emprendimientos e ON e.usuario_id = u.id WHERE u.cedula = @c`, { c: cedula });
+  const clave = req.body.clave;
+  if (clave === undefined || clave === null || clave === '') {
+    if (!u || !u.activo) fallo('No encontramos esa cédula. Revisa el número o acércate a la mesa de ayuda.');
+    const cfg = await V.getConfig();
+    const soloCedula = cfg.ingreso_comprador !== 'clave' && u.rol === 'usuario' && u.es_comprador && !u.emp;
+    if (!soloCedula) return { necesita_clave: true };
+    loginFails.delete(cedula);
+    return { token: U.signToken({ uid: u.id, pv: U.passVersion(u.pass_hash), lim: 1 }) };
   }
+  if (!u || !u.activo || !U.verify(clave, u.pass_hash)) fallo('Cédula o contraseña incorrecta');
   loginFails.delete(cedula);
   return { token: U.signToken({ uid: u.id, pv: U.passVersion(u.pass_hash) }) };
 });
@@ -72,7 +95,9 @@ router.get('/api/me', auth, async (req) => {
   const ultima = await db.get(`SELECT MAX(id) AS id FROM ventas WHERE comprador_id = @id AND estado = 'confirmada' AND total_saldo > 0`, { id: u.id });
   return {
     id: u.id, cedula: u.cedula, nombres: u.nombres, apellidos: u.apellidos, email: u.email, rol: u.rol,
-    es_comprador: !!u.es_comprador, debe_cambiar: !!u.debe_cambiar, tiene_pin: !!s.pin_hash, pin_temporal: !!s.pin_temporal,
+    // Con sesión solo de cédula no se obliga a cambiar la contraseña (no la usa)
+    es_comprador: !!u.es_comprador, debe_cambiar: !!u.debe_cambiar && !req.limitado, tiene_pin: !!s.pin_hash, pin_temporal: !!s.pin_temporal,
+    sesion_limitada: !!req.limitado,
     emprendimiento: u.emprendimiento_id ? { id: u.emprendimiento_id, nombre_comercial: u.nombre_comercial, categoria: u.categoria || null } : null,
     saldo: { asignado: Number(s.saldo_asignado), usado: Number(s.saldo_usado), disponible: money(cents(s.saldo_asignado) - cents(s.saldo_usado)) },
     por_confirmar: pendientes.n,
@@ -100,8 +125,13 @@ router.post('/api/me/clave', auth, async (req) => {
 
 router.post('/api/me/pin', auth, async (req) => {
   const db = DB.get();
-  const u = await db.get('SELECT pass_hash FROM usuarios WHERE id = @id', { id: req.user.id });
-  if (!U.verify(req.body.clave, u.pass_hash)) fail('Contraseña incorrecta');
+  if (req.limitado) {
+    // Entró solo con cédula: para cambiar el PIN debe saber el PIN actual
+    await V.verificarPinPropio(req.user.id, req.body.pin_actual);
+  } else {
+    const u = await db.get('SELECT pass_hash FROM usuarios WHERE id = @id', { id: req.user.id });
+    if (!U.verify(req.body.clave, u.pass_hash)) fail('Contraseña incorrecta');
+  }
   const pin = String(req.body.pin || '');
   if (!/^\d{4}$/.test(pin)) fail('El PIN debe tener 4 dígitos');
   if (/^(\d)\1{3}$/.test(pin) || ['1234', '4321', '0123'].includes(pin)) fail('Elija un PIN menos obvio');
@@ -132,6 +162,8 @@ router.get('/api/catalogo', auth, async () => {
 
 router.post('/api/me/codigo-pago', auth, async (req) => {
   if (!req.user.es_comprador) fail('Solo los compradores pueden generar un código de pago', 403);
+  // Quien entró solo con la cédula confirma con su PIN que es él (la cédula la conoce mucha gente)
+  if (req.limitado) await V.verificarPinPropio(req.user.id, req.body.pin);
   return V.generarCodigoPago(req.user.id);
 });
 
@@ -156,7 +188,7 @@ async function listaVentas(where, params, limit = 500) {
 
 router.get('/api/mis-compras', auth, async (req) => listaVentas('v.comprador_id = @id', { id: req.user.id }));
 
-router.post('/api/ventas/:id/confirmar', auth, async (req) => V.confirmar(req.user, Number(req.params.id), { pin: req.body.pin }));
+router.post('/api/ventas/:id/confirmar', auth, async (req) => V.confirmar(req.user, Number(req.params.id), { pin: req.body.pin, exigirPin: req.limitado }));
 router.post('/api/ventas/:id/rechazar', auth, async (req) => {
   const v = await V.loadVenta(DB.get(), Number(req.params.id));
   if (!v || v.comprador_id !== req.user.id) fail('Venta no encontrada', 404);
@@ -565,6 +597,7 @@ router.put('/api/super/config', auth, SUPER, async (req) => {
     if (k === 'categorias' && !categoriasDe({ categorias: val }).length) fail('Ingrese al menos una categoría');
     if (k === 'categorias' && val.length > 500) fail('La lista de categorías es demasiado larga');
     if (k === 'pago_con_pin' && !['0', '1'].includes(val)) fail('Valor inválido: pago_con_pin');
+    if (k === 'ingreso_comprador' && !['cedula', 'clave'].includes(val)) fail('Valor inválido: ingreso_comprador');
     if (k === 'minutos_codigo_pago' && !(Number(val) >= 1 && Number(val) <= 30)) fail('El código de pago debe durar entre 1 y 30 minutos');
     if (k === 'whatsapp_soporte' && val && !/^\+?[\d\s-]{8,20}$/.test(val)) fail('WhatsApp de soporte: escriba solo números, con código de país (ej. 593991234567)');
     await db.tx(async (q) => {

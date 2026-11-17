@@ -48,6 +48,30 @@
     [/artesan/i, '🧶'], [/ropa|accesorio|moda|bisuter/i, '👕'], [/belleza|cuidado|cosm/i, '🧴'], [/hogar|deco/i, '🏠'],
     [/planta|jard|flor/i, '🌱'], [/libro|papeler/i, '📚'], [/tecno|electr/i, '💻'], [/mascota/i, '🐾'], [/juguet|niñ/i, '🧸']];
   const catEmoji = (c) => (CAT_EMOJI.find(([r]) => r.test(c || '')) || [null, '🛍️'])[1];
+  // Íconos de línea blancos para los botones redondos de categoría (estilo de la imagen de referencia)
+  const CAT_SVG = {
+    todas: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+    comida: '<path d="M3 12h18a9 9 0 0 1-18 0z"/><path d="M8 8.5c0-1.6 1.2-1.6 1.2-3.3M12 8.5c0-1.6 1.2-1.6 1.2-3.3M16 8.5c0-1.6 1.2-1.6 1.2-3.3"/>',
+    postres: '<path d="M6 12h12l-1.6 8H7.6z"/><path d="M10 12l.4 8M14 12l-.4 8"/><path d="M5.2 12a6.8 4.6 0 0 1 13.6 0"/><circle cx="12" cy="4.6" r="1.4"/>',
+    bebidas: '<path d="M6 8h12l-1.6 12.5H7.6z"/><path d="M6.6 12.5h10.8"/><path d="M13 8l2.2-5H19"/>',
+    artesanias: '<circle cx="12" cy="12" r="8.5"/><path d="M4.5 9c4.5 0 9.5 2.5 12.5 8.5M7 5c3.5 2.5 6.5 7 7.5 15M10.5 3.6c3 3 5.5 6 10 8"/>',
+    ropa: '<path d="M8.5 3 3 6.2l2.2 4.4 2.1-1V21h9.4V9.6l2.1 1L21 6.2 15.5 3a3.6 3.6 0 0 1-7 0z"/>',
+    belleza: '<rect x="7" y="9.5" width="10" height="11.5" rx="2"/><path d="M10 9.5V6.5h4v3M11.5 6.5V3h3.5"/><path d="M10 14.5h4"/>',
+    hogar: '<path d="M3 11.5 12 3.5l9 8"/><path d="M5.5 10v10.5h13V10"/><path d="M10 20.5v-6h4v6"/>',
+    plantas: '<path d="M7 14h10l-1.5 7h-7z"/><path d="M12 14V9.5"/><path d="M12 10.5C12 7 9.8 5 5.5 5c0 3.5 2.2 5.5 6.5 5.5zM12 9.5c0-3 2.2-5 6-5 0 3-2.2 5-6 5z"/>',
+    libros: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21z"/><path d="M4 21V5.5M8.5 7.5h7.5"/>',
+    tecnologia: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19.5h20"/>',
+    mascotas: '<circle cx="6.5" cy="10.5" r="1.8"/><circle cx="17.5" cy="10.5" r="1.8"/><circle cx="9.5" cy="6" r="1.8"/><circle cx="14.5" cy="6" r="1.8"/><path d="M12 12.5c-3 0-5 3-5 5.2 0 1.5 1.4 2 2.5 2s1.5-.6 2.5-.6 1.5.6 2.5.6 2.5-.5 2.5-2c0-2.2-2-5.2-5-5.2z"/>',
+    juguetes: '<path d="m12 3 2.6 5.6 6 .7-4.5 4.1 1.2 6-5.3-3-5.3 3 1.2-6-4.5-4.1 6-.7z"/>',
+    otros: '<path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+  };
+  const CAT_KEY = [[/comida|almuerzo|snack|plato/i, 'comida'], [/postre|dulce|reposter|pan/i, 'postres'], [/bebida|jugo|caf[eé]|t[eé]\b/i, 'bebidas'],
+    [/artesan/i, 'artesanias'], [/ropa|accesorio|moda|bisuter/i, 'ropa'], [/belleza|cuidado|cosm/i, 'belleza'], [/hogar|deco/i, 'hogar'],
+    [/planta|jard|flor/i, 'plantas'], [/libro|papeler/i, 'libros'], [/tecno|electr/i, 'tecnologia'], [/mascota/i, 'mascotas'], [/juguet|niñ/i, 'juguetes']];
+  const catIcon = (c, size = 22) => {
+    const k = c === '' ? 'todas' : (CAT_KEY.find(([r]) => r.test(c || '')) || [null, 'otros'])[1];
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${CAT_SVG[k]}</svg>`;
+  };
   const icon = (n, size = 22) => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
 
   function toast(msg, err) {
@@ -214,20 +238,30 @@
     document.title = 'Ingresar · Feria de Emprendedores';
     $('#app').innerHTML = `<div class="login"><form class="card stack" id="f-login" autocomplete="on">
       <img src="icon.svg" class="logo" alt="">
-      <div><h1>Feria de Emprendedores</h1><p class="muted small" style="margin:4px 0 0">Ingresa con tu cédula y contraseña</p></div>
-      <label class="field"><span>Cédula</span><div class="input-ic">${icon('user', 18)}<input class="input" name="cedula" inputmode="numeric" autocomplete="username" placeholder="Tu número de cédula" required></div></label>
-      <label class="field"><span>Contraseña</span>${pwField('clave', 'current-password')}</label>
-      <button class="btn primary block lg" type="submit">Ingresar</button>
-      <p class="tiny muted center" style="margin:6px 0 0">¿Olvidaste tu contraseña? Acércate a la <strong>mesa de ayuda</strong> del evento.<br>Es la misma cédula con la que te registraron.</p>
+      <div><h1>Feria de Emprendedores</h1><p class="muted small" style="margin:4px 0 0" id="login-hint">Escribe tu número de cédula y toca <strong>Entrar</strong></p></div>
+      <label class="field"><span>Cédula</span><div class="input-ic">${icon('user', 18)}<input class="input lg-input" name="cedula" inputmode="numeric" autocomplete="username" placeholder="Tu número de cédula" required></div></label>
+      <label class="field" id="pw-wrap" hidden><span>Contraseña</span>${pwField('clave', 'current-password')}
+        <span class="tiny muted" style="display:block;margin-top:6px">Emprendedores y administradores entran con contraseña.</span></label>
+      <button class="btn primary block lg" type="submit">Entrar</button>
+      <p class="tiny muted center" style="margin:6px 0 0">Es la misma cédula con la que te registraron.<br>¿Problemas para entrar? Acércate a la <strong>mesa de ayuda</strong>.</p>
       <div id="login-wa"></div>
       <button type="button" class="btn ghost block" id="b-letra-login">🔠 ${letraGrande() ? 'Letra normal' : 'Letra más grande'}</button>
     </form></div>`;
     bindPwToggles($('#f-login'));
     $('#b-letra-login').onclick = () => { setLetra(!letraGrande()); renderLogin(); };
-    // Cédula recordada: al volver solo hay que escribir la contraseña
+    // La contraseña se pide solo si esa cédula la necesita (emprendedores y administradores)
+    const fl = $('#f-login');
+    fl.clave.required = false;
+    const mostrarClave = () => {
+      $('#pw-wrap').hidden = false; fl.clave.required = true;
+      $('#login-hint').innerHTML = 'Ahora escribe tu <strong>contraseña</strong>';
+      setTimeout(() => fl.clave.focus(), 50);
+    };
+    fl.cedula.oninput = () => { if (!fl.clave.value) { $('#pw-wrap').hidden = true; fl.clave.required = false; } };
+    // Cédula recordada en este celular
     try {
       const ced = localStorage.getItem('feria_cedula');
-      if (ced) { $('#f-login').cedula.value = ced; setTimeout(() => { const c = $('#f-login'); if (c) c.clave.focus(); }, 50); }
+      if (ced) fl.cedula.value = ced;
     } catch (_) { /* sin almacenamiento */ }
     // WhatsApp de ayuda (si está configurado), también antes de iniciar sesión
     fetch('/api/publico').then(r => r.json()).then(p => {
@@ -237,8 +271,10 @@
     $('#f-login').onsubmit = (e) => {
       e.preventDefault();
       const f = e.target;
-      guard(f.querySelector('button'), async () => {
-        const r = await api('POST', '/api/login', { cedula: f.cedula.value.trim(), clave: f.clave.value });
+      guard(f.querySelector('button[type="submit"]'), async () => {
+        const conClave = !$('#pw-wrap').hidden || f.clave.value;
+        const r = await api('POST', '/api/login', conClave ? { cedula: f.cedula.value.trim(), clave: f.clave.value } : { cedula: f.cedula.value.trim() });
+        if (r.necesita_clave) return mostrarClave();
         S.token = r.token; localStorage.setItem('feria_token', r.token);
         try { localStorage.setItem('feria_cedula', f.cedula.value.trim()); } catch (_) { /* sin almacenamiento */ }
         await start();
@@ -365,7 +401,7 @@
       if (r.includes('comp')) st.push({ sel: NAV('inicio'), t: '🛍️ También puedes comprar', d: 'En "Compras" está tu saldo y el botón para pagar con código.' });
     } else if (r.includes('comp')) {
       st.push({ tab: 'inicio', sel: '.balance', t: '💰 Este es tu saldo', d: 'Es el dinero que tienes para comprar en la feria.' });
-      st.push({ tab: 'inicio', sel: '#b-code', t: '🔐 Para pagar, toca aquí', d: 'Te sale un número. Escríbelo tú en el celular del vendedor.' });
+      st.push({ tab: 'inicio', sel: '#b-code', t: '🔐 Para pagar, toca aquí', d: S.me.sesion_limitada ? 'Te pedimos tu PIN y te sale un número. Escríbelo tú en el celular del vendedor.' : 'Te sale un número. Escríbelo tú en el celular del vendedor.' });
       st.push({ tab: 'catalogo', sel: '.cat-tools', t: '🛍️ Mira qué venden', d: 'Toca una categoría o escribe lo que buscas.' });
     }
     st.push({ sel: '#b-help', t: '❓ ¿Tienes dudas?', d: 'Toca este botón cuando quieras para ver este recorrido otra vez. Y si ves una "i", tócala: te explica esa parte.' });
@@ -550,7 +586,7 @@
     categoria: 'Es el grupo donde apareces en el catálogo, por ejemplo Comida o Artesanías. Así los compradores te encuentran más fácil.',
     stock: 'Cuántas unidades tienes para vender hoy. Baja solo cada vez que vendes.',
     misventas: 'Aquí ves todo lo que vendiste. Toca una venta para modificarla, anularla o marcarla como entregada.',
-    pin: 'Es una clave de 4 números para pagar con tu saldo. Es más seguro usar el código del celular, porque sirve una sola vez.',
+    pin: 'Es una clave de 4 números. Te la pedimos en tu propio celular para pagar con tu saldo, así nadie más puede gastarlo aunque sepa tu cédula. No se la digas a nadie.',
     panel: 'Resumen de la feria en vivo: se actualiza solo cada 15 segundos.',
     reportadas: 'Compras que un comprador dice que no hizo. Revisa con el emprendedor antes de decidir.',
   };
@@ -636,7 +672,11 @@
     b.querySelectorAll('[data-a]').forEach(btn => {
       btn.onclick = async () => {
         const a = btn.dataset.a;
-        if (a === 'conf') return guard(btn, async () => { await api('POST', `/api/ventas/${id}/confirmar`, {}); done('Compra confirmada'); });
+        if (a === 'conf') {
+          const pin = await pedirPin('Para confirmar esta compra con tu saldo, confirma que eres tú.');
+          if (pin === null) return openVenta(id, after);
+          return guard(btn, async () => { await api('POST', `/api/ventas/${id}/confirmar`, pin ? { pin } : {}); feedbackOk(); done('Compra confirmada'); });
+        }
         if (a === 'rech') return guard(btn, async () => { await api('POST', `/api/ventas/${id}/rechazar`, {}); done('Compra rechazada'); });
         if (a === 'ent') return guard(btn, async () => { await api('POST', `/api/ventas/${id}/entregar`, {}); done('Marcada como entregada'); });
         if (a === 'mail') return guard(btn, async () => { const r = await api('POST', `/api/ventas/${id}/reenviar`, {}); toast('Comprobante enviado a ' + r.para); });
@@ -1025,7 +1065,7 @@
         <div class="pc-h">${icon('shield', 22)}<div class="grow"><div style="font-weight:700;font-size:16px">Pagar con tu saldo</div><div class="tiny muted">Seguro: el código sirve una sola vez</div></div>${infoBtn('codigo')}</div>
         <ol class="how">
           <li><span>1</span><div>En el puesto, dile al vendedor qué vas a llevar.</div></li>
-          <li><span>2</span><div>Cuando vayas a pagar, toca <strong>Generar código</strong>.</div></li>
+          <li><span>2</span><div>Cuando vayas a pagar, toca <strong>Generar código</strong>${S.me.sesion_limitada ? ' y escribe tu PIN' : ''}.</div></li>
           <li><span>3</span><div><strong>Escribe tú</strong> el código en el equipo del vendedor. No lo digas en voz alta.</div></li>
         </ol>
         <div id="pc-box"></div>
@@ -1040,18 +1080,40 @@
     const gc = $('#go-c'); if (gc) gc.onclick = (e) => { e.preventDefault(); go('cuenta'); };
     const gk = $('#go-cat'); if (gk) gk.onclick = () => go('catalogo');
     const bc = $('#b-code');
-    if (bc) bc.onclick = () => guard(bc, async () => {
-      const r = await api('POST', '/api/me/codigo-pago', {});
-      showPayCode(r);
-    });
+    if (bc) bc.onclick = async () => {
+      const pin = await pedirPin('Para pagar con tu saldo, confirma que eres tú.');
+      if (pin === null) return;
+      guard(bc, async () => {
+        const r = await api('POST', '/api/me/codigo-pago', pin ? { pin } : {});
+        showPayCode(r);
+      });
+    };
     if (S.payCode && new Date(S.payCode.expira) > new Date()) showPayCode(S.payCode);
-    main.querySelectorAll('[data-ok]').forEach(b => { b.onclick = () => guard(b, async () => { await api('POST', `/api/ventas/${b.dataset.ok}/confirmar`, {}); toast('Compra confirmada'); go('inicio'); }); });
+    main.querySelectorAll('[data-ok]').forEach(b => { b.onclick = async () => {
+      const pin = await pedirPin('Para confirmar esta compra con tu saldo, confirma que eres tú.');
+      if (pin === null) return;
+      guard(b, async () => { await api('POST', `/api/ventas/${b.dataset.ok}/confirmar`, pin ? { pin } : {}); feedbackOk(); toast('Compra confirmada'); go('inicio'); });
+    }; });
     main.querySelectorAll('[data-no]').forEach(b => { b.onclick = async () => {
       if (!(await ask('Rechazar compra', '<p>La venta se anulará y tu saldo quedará libre.</p>', 'Rechazar', true))) return;
       closeModal(); guard(b, async () => { await api('POST', `/api/ventas/${b.dataset.no}/rechazar`, {}); toast('Compra rechazada'); go('inicio'); });
     }; });
     bindVentaItems($('#cl'), () => go('inicio'));
   };
+
+  // PIN del comprador en SU celular (cuando entró solo con la cédula): confirma que es él antes de pagar
+  async function pedirPin(texto) {
+    if (!S.me.sesion_limitada) return '';
+    if (!S.me.tiene_pin) { toast('Aún no tienes PIN. Pídelo en la mesa de ayuda.', true); return null; }
+    const r = await ask('🔒 Escribe tu PIN', `<p style="margin:0 0 10px">${texto}</p>
+      <input class="input pin" name="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+      <p class="tiny muted" style="margin:8px 0 0">Son 4 números. Escríbelo tú, sin que nadie vea. Si no lo recuerdas, pídelo en la mesa de ayuda.</p>`, 'Continuar');
+    closeModal();
+    if (!r) return null;
+    const pin = String(r.pin || '').replace(/\D/g, '');
+    if (pin.length !== 4) { toast('El PIN tiene 4 números', true); return null; }
+    return pin;
+  }
 
   // Muestra el código de pago con una barra de tiempo; al vencer, se borra de la pantalla
   function showPayCode(r) {
@@ -1108,9 +1170,9 @@
     const nProd = emps.reduce((a, e) => a + e.productos.length, 0);
     main.innerHTML = `<div class="cat-tools">
         <div class="input-ic">${icon('search', 18)}<input class="input" id="cq" placeholder="Buscar producto o emprendimiento" value="${esc(C.q)}" autocomplete="off" inputmode="search"></div>
-        <div class="chips" style="margin-top:10px" id="cc">
-          <button class="chip ${C.cat ? '' : 'on'}" data-c="">Todas<span class="n">${emps.length}</span></button>
-          ${cats.map(c => `<button class="chip ${C.cat === c ? 'on' : ''}" data-c="${esc(c)}">${catEmoji(c)} ${esc(c)}<span class="n">${porCat(c).length}</span></button>`).join('')}
+        <div class="cat-row" id="cc" role="group" aria-label="Categorías">
+          ${[['', 'Todas', emps.length], ...cats.map(c => [c, c, porCat(c).length])].map(([v, l, n]) => `<button type="button" class="cat-btn ${C.cat === v ? 'on' : ''}" data-c="${esc(v)}" aria-pressed="${C.cat === v}">
+            <span class="cat-ic">${catIcon(v)}<span class="cat-n">${n}</span></span><span class="cat-l">${esc(l)}</span></button>`).join('')}
         </div></div>
       <div class="spread" style="margin:0 2px 4px;gap:8px"><span class="tiny muted">${emps.length} emprendimientos · ${nProd} productos · toca un puesto para ver lo que vende</span>${infoBtn('catalogo')}</div>
       <div id="cat"></div>`;
@@ -1142,7 +1204,7 @@
         html = res.length ? `<div class="cat-h"><h2>Resultados</h2><span>${res.length} ${res.length === 1 ? 'emprendimiento' : 'emprendimientos'}</span></div>${res.join('')}`
           : emptyState('search', 'No encontramos eso', 'Prueba con otra palabra, por ejemplo "café" o "pulsera", o quita el filtro de categoría.');
       } else {
-        html = (C.cat ? [C.cat] : cats).map(c => `<div class="cat-h"><h2><span aria-hidden="true">${catEmoji(c)}</span> ${esc(c)}</h2><span>${porCat(c).length} ${porCat(c).length === 1 ? 'emprendimiento' : 'emprendimientos'}</span></div>${porCat(c).map(e => empCard(e, '')).join('')}`).join('')
+        html = (C.cat ? [C.cat] : cats).map(c => `<div class="cat-h"><h2><span class="cat-ic sm">${catIcon(c, 15)}</span> ${esc(c)}</h2><span>${porCat(c).length} ${porCat(c).length === 1 ? 'emprendimiento' : 'emprendimientos'}</span></div>${porCat(c).map(e => empCard(e, '')).join('')}`).join('')
           || emptyState('bag', 'Aún no hay productos', 'Los emprendedores están cargando su catálogo. Vuelve a mirar en un rato.');
       }
       $('#cat').innerHTML = html;
@@ -1156,7 +1218,7 @@
     $('#cq').oninput = debounce(() => { C.q = $('#cq').value; paint(); }, 200);
     $('#cc').querySelectorAll('[data-c]').forEach(b => { b.onclick = () => {
       C.cat = b.dataset.c;
-      $('#cc').querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b));
+      $('#cc').querySelectorAll('[data-c]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
       paint(); window.scrollTo(0, 0);
     }; });
     paint();
@@ -1174,21 +1236,28 @@
           <button type="button" data-letra="1" class="${letraGrande() ? 'on' : ''}"><span style="font-size:26px">A</span><small>Grande</small></button></div></div>
       ${esInstalada() ? '' : `<div class="card"><h3 style="margin-bottom:4px">📲 La feria en tu celular</h3><p class="small muted" style="margin:0 0 10px">Ábrela con un toque desde tu pantalla de inicio, sin buscar el enlace.</p>
         <button class="btn primary block lg" id="b-inst">Instalar en mi celular</button></div>`}
-      <div class="card"><h3 style="margin-bottom:12px">Cambiar contraseña</h3><form class="stack" id="fc">
+      ${me.sesion_limitada ? '' : `<div class="card"><h3 style="margin-bottom:12px">Cambiar contraseña</h3><form class="stack" id="fc">
         <label class="field"><span>Contraseña actual</span><input class="input" type="password" name="actual" required autocomplete="current-password"></label>
         <label class="field"><span>Nueva contraseña</span><input class="input" type="password" name="nueva" minlength="6" required autocomplete="new-password"></label>
-        <button class="btn primary">Cambiar contraseña</button></form></div>
-      ${me.es_comprador ? `<div class="card"><h3 style="margin-bottom:4px">PIN de compras ${infoBtn('pin')}</h3><p class="small muted" style="margin:0 0 12px">Lo escribes en el equipo del vendedor para pagar con tu saldo. No lo compartas.</p><form class="stack" id="fp">
-        <label class="field"><span>Nuevo PIN (4 dígitos)</span><input class="input pin" name="pin" type="password" inputmode="numeric" maxlength="4" required autocomplete="off"></label>
-        <label class="field"><span>Tu contraseña</span><input class="input" type="password" name="clave" required autocomplete="current-password"></label>
-        <button class="btn primary">Guardar PIN</button></form></div>` : ''}
+        <button class="btn primary">Cambiar contraseña</button></form></div>`}
+      ${me.es_comprador ? `<div class="card"><h3 style="margin-bottom:4px">🔒 Tu PIN ${infoBtn('pin')}</h3><p class="small muted" style="margin:0 0 12px">Son 4 números. Te lo pedimos para pagar con tu saldo. No se lo digas a nadie.</p>
+        ${me.sesion_limitada && !me.tiene_pin ? '<div class="alert warn small">Aún no tienes PIN. Pídelo en la mesa de ayuda.</div>' : `<form class="stack" id="fp">
+        ${me.sesion_limitada
+          ? '<label class="field"><span>Tu PIN actual</span><input class="input pin" name="pin_actual" type="password" inputmode="numeric" maxlength="4" required autocomplete="off"></label>'
+          : '<label class="field"><span>Tu contraseña</span><input class="input" type="password" name="clave" required autocomplete="current-password"></label>'}
+        <label class="field"><span>Nuevo PIN (4 números)</span><input class="input pin" name="pin" type="password" inputmode="numeric" maxlength="4" required autocomplete="off"></label>
+        <button class="btn primary">Guardar PIN</button></form>`}</div>` : ''}
       <button class="btn danger block" id="b-logout" style="margin-top:16px">Cerrar sesión</button>`;
     $('#b-logout').onclick = logout;
     main.querySelectorAll('[data-letra]').forEach(b => { b.onclick = () => { setLetra(b.dataset.letra === '1'); go('cuenta'); }; });
     const bi = $('#b-inst', main); if (bi) bi.onclick = instalarApp;
-    $('#fc').onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => { const r = await api('POST', '/api/me/clave', { actual: f.actual.value, nueva: f.nueva.value }); saveToken(r.token); f.reset(); toast('Contraseña actualizada'); }); };
+    const fcf = $('#fc');
+    if (fcf) fcf.onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => { const r = await api('POST', '/api/me/clave', { actual: f.actual.value, nueva: f.nueva.value }); saveToken(r.token); f.reset(); toast('Contraseña actualizada'); }); };
     const fp = $('#fp');
-    if (fp) fp.onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => { await api('POST', '/api/me/pin', { pin: f.pin.value, clave: f.clave.value }); f.reset(); await loadMe(); toast('PIN actualizado'); }); };
+    if (fp) fp.onsubmit = (e) => { e.preventDefault(); const f = e.target; guard(f.querySelector('button'), async () => {
+      await api('POST', '/api/me/pin', { pin: f.pin.value, clave: f.clave ? f.clave.value : undefined, pin_actual: f.pin_actual ? f.pin_actual.value : undefined });
+      f.reset(); await loadMe(); feedbackOk(); toast('PIN actualizado');
+    }); };
   };
 
   // ---------- Panel (administración) ----------
@@ -1369,7 +1438,10 @@
         <div class="grid2"><label class="field"><span>Plazo de entrega con saldo (horas)</span><input class="input money" name="horas_entrega_cxc" value="${esc(cfg.horas_entrega_cxc)}"></label>
         <label class="field"><span>Minutos para confirmar en la app</span><input class="input money" name="minutos_confirmacion" value="${esc(cfg.minutos_confirmacion)}"></label></div>
         <label class="field"><span>Categorías del catálogo (en este orden, separadas por coma)</span><textarea class="input" name="categorias" rows="2">${esc(cfg.categorias)}</textarea></label>
-        <div class="grid2"><label class="field"><span>Pago con PIN de 4 dígitos</span><select class="input" name="pago_con_pin">
+        <label class="field"><span>¿Cómo entran los compradores?</span><select class="input" name="ingreso_comprador">
+            <option value="cedula" ${cfg.ingreso_comprador !== 'clave' ? 'selected' : ''}>Solo con su cédula (para pagar se les pide su PIN)</option>
+            <option value="clave" ${cfg.ingreso_comprador === 'clave' ? 'selected' : ''}>Con cédula y contraseña</option></select></label>
+        <div class="grid2"><label class="field"><span>PIN en el equipo del vendedor</span><select class="input" name="pago_con_pin">
             <option value="1" ${cfg.pago_con_pin !== '0' ? 'selected' : ''}>Permitido (PIN o código)</option>
             <option value="0" ${cfg.pago_con_pin === '0' ? 'selected' : ''}>Desactivado (solo código o app)</option></select></label>
           <label class="field"><span>Duración del código de pago (min)</span><input class="input money" name="minutos_codigo_pago" value="${esc(cfg.minutos_codigo_pago)}"></label></div>

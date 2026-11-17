@@ -317,6 +317,21 @@ a.help-opt { text-decoration: none; }
 .role-tag.r-emp { background: #bbf7d0; color: #14532d; }
 .role-tag.r-comp { background: #fbcfe8; color: #831843; }
 
+/* Botones de categoría: círculo de 42×42 con ícono blanco y nombre debajo */
+.cat-row { display: flex; gap: 6px; overflow-x: auto; padding: 10px 2px 4px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.cat-row::-webkit-scrollbar { display: none; }
+.cat-btn { flex: 0 0 auto; width: 70px; display: flex; flex-direction: column; align-items: center; gap: 5px; background: none; border: 0; padding: 2px 0;
+  cursor: pointer; font: inherit; color: var(--ink-2); scroll-snap-align: start; }
+.cat-ic { position: relative; width: 42px; height: 42px; border-radius: 50%; background: var(--brand-2); color: #fff; display: grid; place-items: center;
+  box-shadow: 0 2px 6px rgba(31,95,63,.25); transition: transform .12s, box-shadow .12s; flex: 0 0 auto; }
+.cat-ic.sm { width: 26px; height: 26px; box-shadow: none; display: inline-grid; vertical-align: -6px; margin-right: 2px; }
+.cat-btn .cat-l { font-size: 11.5px; line-height: 1.2; text-align: center; max-width: 70px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cat-btn .cat-n { position: absolute; top: -4px; right: -6px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--surface); color: var(--ink-2);
+  font-size: 10.5px; font-weight: 700; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.cat-btn:active .cat-ic { transform: scale(.94); }
+.cat-btn.on .cat-ic { background: var(--brand); box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--accent); }
+.cat-btn.on .cat-l { color: var(--brand); font-weight: 700; }
+
 /* Catálogo: categoría → emprendimiento → productos */
 .cat-tools { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 4px 0 10px; }
 .cat-tools .chip .n { opacity: .6; margin-left: 4px; font-variant-numeric: tabular-nums; }

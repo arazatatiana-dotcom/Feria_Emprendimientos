@@ -54,6 +54,8 @@ module.exports = {
     // 1 = se acepta el PIN de 4 dígitos; 0 = solo código de pago del celular o aprobación en la app
     pago_con_pin: '1',
     minutos_codigo_pago: '5',
+    // cedula = los compradores entran solo con su cédula (y su PIN para pagar); clave = cédula y contraseña
+    ingreso_comprador: 'cedula',
     // WhatsApp de la mesa de ayuda, con código de país (ej. 593991234567). Vacío = no se muestra el botón
     whatsapp_soporte: '',
   },

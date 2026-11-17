@@ -25,7 +25,9 @@ async function getConfig(q = DB.get()) {
 // aunque alguien lo vea o lo escuche, después ya no sirve. El PIN se puede desactivar en Ajustes.
 // Ambos comparten el bloqueo: 5 intentos fallidos bloquean 10 minutos.
 const pinFails = new Map();
-async function checkPin(comprador, pin) {
+// propio: el comprador escribe su PIN en SU celular (para generar código o confirmar). Siempre se
+// permite, aunque en Ajustes se haya desactivado el PIN en el equipo del vendedor.
+async function checkPin(comprador, pin, { propio = false } = {}) {
   const st = pinFails.get(comprador.id);
   if (st && st.until > Date.now()) fail('Bloqueado por intentos fallidos. Espere 10 minutos o pida al comprador que apruebe la compra en su app.', 429);
   const val = String(pin ?? '').trim();
@@ -37,7 +39,7 @@ async function checkPin(comprador, pin) {
     if (c) ok = { medio: 'codigo', codigoId: c.id };
   } else if (/^\d{4}$/.test(val)) {
     const cfg = await getConfig();
-    if (cfg.pago_con_pin === '0') fail('El pago con PIN está desactivado. Pide al comprador el código de pago de su celular o que apruebe la compra en su app.');
+    if (!propio && cfg.pago_con_pin === '0') fail('El pago con PIN está desactivado. Pide al comprador el código de pago de su celular o que apruebe la compra en su app.');
     if (!comprador.pin_hash) fail('El comprador no tiene PIN asignado. Use el código de pago o la aprobación desde su app.');
     if (verify(val, comprador.pin_hash)) ok = { medio: 'pin' };
   } else {
@@ -53,6 +55,14 @@ async function checkPin(comprador, pin) {
   }
   pinFails.delete(comprador.id);
   return ok;
+}
+
+// El comprador confirma con su PIN que es él (cuando entró solo con la cédula)
+async function verificarPinPropio(usuarioId, pin) {
+  const u = await DB.get().get('SELECT id, pin_hash FROM usuarios WHERE id = @id', { id: usuarioId });
+  if (!u || !u.pin_hash) fail('Aún no tienes PIN. Pídelo en la mesa de ayuda.');
+  if (!/^\d{4}$/.test(String(pin ?? '').trim())) fail('Escribe tu PIN de 4 números');
+  await checkPin(u, pin, { propio: true });
 }
 
 // Marca el código como usado dentro de la transacción de la venta: si la venta falla, el código sigue vigente
@@ -382,7 +392,7 @@ async function anular(actor, id, motivo, { sistema = false, condicion = null, fo
 }
 
 // ---------- Confirmar (PIN posterior o aprobación del comprador) ----------
-async function confirmar(actor, id, { pin } = {}) {
+async function confirmar(actor, id, { pin, exigirPin = false } = {}) {
   const db = DB.get();
   const v0 = await loadVenta(db, id);
   if (!v0) fail('Venta no encontrada', 404);
@@ -391,6 +401,7 @@ async function confirmar(actor, id, { pin } = {}) {
   if (!esComprador && !esVendedor) fail('No autorizado', 403);
   if (v0.estado !== 'por_confirmar') fail(v0.estado === 'anulada' ? 'Esta venta fue anulada' : 'Esta venta ya está confirmada');
   let autz = null;
+  if (esComprador && exigirPin) await verificarPinPropio(actor.id, pin);
   if (esVendedor && !esComprador) {
     const comprador = await db.get('SELECT id, pin_hash FROM usuarios WHERE id = @id', { id: v0.comprador_id });
     autz = await checkPin(comprador, pin);
@@ -505,4 +516,4 @@ async function tareasProgramadas() {
 }
 
 module.exports = { crear, editar, anular, confirmar, marcarEntregado, loadVenta, getConfig, tareasProgramadas, FORMAS,
-  generarCodigoPago, compradorPorCodigo, reportar, resolverReporte };
+  generarCodigoPago, compradorPorCodigo, verificarPinPropio, reportar, resolverReporte };
